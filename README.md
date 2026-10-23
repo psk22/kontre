@@ -37,7 +37,7 @@
    - Opening a Reel or Short executes `performGlobalAction(GLOBAL_ACTION_BACK)` to immediately step out.
    - **No intrusive fullscreen overlays, no popups, and no dialogs**.
 
-### 4. Foreground Service & Lifecycle Stability (`ReelShieldForegroundService` / Kontre)
+### 4. Foreground Service & Lifecycle Stability (`KontreForegroundService`)
 - Sticky `ForegroundService` (`START_STICKY`) with ongoing notification to prevent Android's OOM low-memory killer.
 - Configured with `foregroundServiceType="specialUse"` and `PROPERTY_SPECIAL_USE_FGS_SUBTYPE` for Android 14+ compliance.
 - Supports battery optimization exemption (`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`).
@@ -60,9 +60,8 @@ ReelShield/
 │   │       ├── data/QuotaManager.kt                   # 50-video quota & midnight reset
 │   │       ├── service/
 │   │       │   ├── VideoBlockerAccessibilityService.kt # BFS heuristics & dwell engine
-│   │       │   ├── ReelShieldAccessibilityService.kt  # Alias/subclass
 │   │       │   ├── BlockingOverlayService.kt          # TYPE_APPLICATION_OVERLAY
-│   │       │   └── ReelShieldForegroundService.kt     # Sticky FGS lifecycle watcher
+│   │       │   └── KontreForegroundService.kt         # Sticky FGS lifecycle watcher
 │   │       ├── ui/
 │   │       │   ├── BlockOverlayActivity.kt            # Fullscreen lockout activity
 │   │       │   └── theme/                             # Jetpack Compose theme tokens
