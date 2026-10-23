@@ -21,35 +21,51 @@ class ReelShieldForegroundService : Service() {
         const val NOTIFICATION_ID = 1001
 
         fun start(context: Context) {
-            val intent = Intent(context, ReelShieldForegroundService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            try {
+                val intent = Intent(context, ReelShieldForegroundService::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ReelShieldFGS", "Failed to start foreground service safely", e)
             }
         }
 
         fun stop(context: Context) {
-            val intent = Intent(context, ReelShieldForegroundService::class.java)
-            context.stopService(intent)
+            try {
+                val intent = Intent(context, ReelShieldForegroundService::class.java)
+                context.stopService(intent)
+            } catch (e: Exception) {
+                android.util.Log.e("ReelShieldFGS", "Failed to stop foreground service", e)
+            }
         }
     }
 
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
+        try {
+            createNotificationChannel()
+        } catch (e: Exception) {
+            android.util.Log.e("ReelShieldFGS", "Failed to create notification channel", e)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val notification = buildNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        try {
+            val notification = buildNotification()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+                } else {
+                    startForeground(NOTIFICATION_ID, notification)
+                }
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        } catch (e: Exception) {
+            android.util.Log.e("ReelShieldFGS", "Failed in startForeground", e)
         }
         return START_STICKY
     }
