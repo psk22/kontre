@@ -20,6 +20,7 @@ Unlike aggressive app blockers that shut down Instagram or YouTube entirely, Kon
    - [5.5 False Chat Collision via "Direct Share" & "Direct Tab"](#55-false-chat-collision-via-direct-share--direct-tab)
    - [5.6 Active Typing & IME Software Keyboard Immunity](#56-active-typing--ime-software-keyboard-immunity)
    - [5.7 Samsung One UI & System Launcher Immunity](#57-samsung-one-ui--system-launcher-immunity)
+   - [5.8 Instagram Stories & Shared Reels in Stories Immunity](#58-instagram-stories--shared-reels-in-stories-immunity)
 6. [QA & Verification Test Matrix](#6-qa--verification-test-matrix)
 7. [Build, Deployment & Shell Commands Guide](#7-build-deployment--shell-commands-guide)
 
@@ -198,6 +199,15 @@ The detection system inside [`VideoBlockerAccessibilityService.kt`](file:///c:/A
 - **Solution**:
   Explicitly ignored launcher packages (`com.sec.android.app.launcher`, `com.android.launcher3`, `com.google.android.apps.nexuslauncher`, etc.) in the package filter and event dispatcher.
 
+### 5.8 Instagram Stories & Shared Reels in Stories Immunity
+- **Problem**: When users watched an Instagram Story containing a shared Reel sticker or embedded short video, Kontre falsely detected short-form video signatures and ejected the user out of the Story viewer.
+- **Root Cause**:
+  Instagram's Story viewer (`ReelViewerFragment`) shares legacy naming conventions (`reel_viewer_container`), and embedded Reel stickers in Stories can surface video layouts or text containing "Reel". Furthermore, previous checks only verified `isInstagramTextingOrChatting` and `isInstagramHomeFeed` in dwell/intervention handlers, leaving Stories unprotected when video layouts were encountered.
+- **Solution**:
+  1. Implemented dedicated `isInstagramStory(root: AccessibilityNodeInfo): Boolean` inspecting Story progress bars (`story_progress`, `stories_progress_bar`, `segment_progress_bar`, `reel_viewer_progress_bar`), story headers (`reel_viewer_header`, `reel_viewer_title`), and story reply composers.
+  2. Guarded `hasDedicatedFullscreenReel` so that if `isInstagramStory(root)` is true, it immediately returns `false`.
+  3. Added `isInstagramStory` safeguard to `detectInstagramReels`, dwell abortion, and `triggerIntervention`.
+
 ---
 
 ## 6. QA & Verification Test Matrix
@@ -206,6 +216,8 @@ The detection system inside [`VideoBlockerAccessibilityService.kt`](file:///c:/A
 | :--- | :--- | :--- |
 | **Browsing Home Feed** | User can scroll feed, read captions, view photos, carousels, and in-feed videos without dwell timer or ejections. | ✅ Passed |
 | **Resting on Home Feed** | Pausing on the Home screen for several seconds/minutes never kicks the user out to the phone launcher. | ✅ Passed |
+| **Watching Stories (Images & Videos)** | Story viewer progress bar detected; user can watch regular stories without any ejection or HUD pill. | ✅ Passed |
+| **Watching Stories with Shared Reels** | Story containing an embedded/shared Reel is recognized via `isInstagramStory`; user is NOT ejected. | ✅ Passed |
 | **Tap on Reel from Home Feed** | Fullscreen `ClipsViewerFragment` opens ($\ge 75\%$ height). Intercepted and ejected via `GLOBAL_ACTION_BACK`, returning user to feed. | ✅ Passed |
 | **Opening DMs (Text)** | Navigating to Direct Messages inbox never kicks the user to Home. | ✅ Passed |
 | **Switching to "General" Tab in DMs** | Tapping "General" filter tab keeps user inside DMs; never kicks to Home. | ✅ Passed |

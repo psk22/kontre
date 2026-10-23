@@ -183,8 +183,8 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             }
 
             if ((targetPackage == PACKAGE_INSTAGRAM || targetPackage == PACKAGE_INSTAGRAM_LITE) &&
-                (isInstagramTextingOrChatting(currentRoot) || isInstagramHomeFeed(currentRoot))) {
-                Log.d(TAG, "Aborting dwell action: user is in DMs or on Home feed.")
+                (isInstagramTextingOrChatting(currentRoot) || isInstagramHomeFeed(currentRoot) || isInstagramStory(currentRoot))) {
+                Log.d(TAG, "Aborting dwell action: user is in DMs, on Home feed, or viewing Stories.")
                 cancelDwellTimer()
                 hideCounterPill()
                 return@launch
@@ -252,6 +252,12 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         }
 
         if (currentPkg == PACKAGE_INSTAGRAM || currentPkg == PACKAGE_INSTAGRAM_LITE) {
+            if (isInstagramStory(currentRoot)) {
+                Log.d(TAG, "Intervention aborted: user is viewing an Instagram Story.")
+                cancelDwellTimer()
+                hideCounterPill()
+                return
+            }
             if (isInstagramTextingOrChatting(currentRoot)) {
                 Log.d(TAG, "Intervention aborted: user is inside Instagram DMs/chat/inbox.")
                 cancelDwellTimer()
@@ -555,10 +561,94 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
     }
 
     /**
+     * Complete immunity shield for Instagram Stories.
+     * When users watch Stories (including Reels shared/embedded into a Story),
+     * this ensures the app NEVER intervenes and NEVER ejects the user.
+     */
+    private fun isInstagramStory(root: AccessibilityNodeInfo): Boolean {
+        // 1. Check known Story Progress Bar and Container View IDs
+        val storyViewIds = listOf(
+            "com.instagram.android:id/story_progress",
+            "com.instagram.android:id/stories_progress_bar",
+            "com.instagram.android:id/segment_progress_bar",
+            "com.instagram.android:id/reel_viewer_progress_bar",
+            "com.instagram.android:id/reel_viewer_header",
+            "com.instagram.android:id/reel_viewer_title",
+            "com.instagram.android:id/reel_viewer_subtitle",
+            "com.instagram.android:id/reel_viewer_timestamp",
+            "com.instagram.android:id/reel_viewer_view_pager",
+            "com.instagram.android:id/reel_viewer_root",
+            "com.instagram.android:id/story_item",
+            "com.instagram.android:id/story_viewer_reply",
+            "com.instagram.android:id/story_reply_composer",
+            "com.instagram.android:id/direct_story_reply",
+            "com.instagram.android:id/toolbar_container"
+        )
+
+        for (id in storyViewIds) {
+            val nodes = root.findAccessibilityNodeInfosByViewId(id)
+            if (!nodes.isNullOrEmpty() && nodes.any { it.isVisibleToUser }) {
+                return true
+            }
+        }
+
+        // 2. Check for reel_viewer_container (Story viewer container in Instagram)
+        val reelViewerContainer = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/reel_viewer_container")
+        if (!reelViewerContainer.isNullOrEmpty() && reelViewerContainer.any { it.isVisibleToUser }) {
+            return true
+        }
+
+        // 3. Tree-walk check for Story progress bar, reply prompts, or story header
+        val queue = ArrayDeque<AccessibilityNodeInfo>().apply { add(root) }
+        var visited = 0
+        while (queue.isNotEmpty() && visited < 70) {
+            val node = queue.removeFirst()
+            visited++
+
+            val resId = (node.viewIdResourceName ?: "").lowercase()
+            val desc = (node.contentDescription?.toString() ?: "").trim().lowercase()
+            val text = (node.text?.toString() ?: "").trim().lowercase()
+
+            if (resId.contains("story_progress") || resId.contains("stories_progress") ||
+                resId.contains("segment_progress") || resId.contains("reel_viewer_progress")) {
+                return true
+            }
+
+            if (resId.contains("reel_viewer_header") || resId.contains("story_reply") ||
+                resId.contains("story_composer")) {
+                return true
+            }
+
+            if (desc.contains("story by") || text.contains("story by") ||
+                (desc.contains("stories") && desc.contains("progress"))) {
+                return true
+            }
+
+            // Story reply field placeholder at bottom
+            if (text.startsWith("reply to ") || desc.startsWith("reply to ") ||
+                (text == "send message" && resId.contains("story")) ||
+                (desc == "send message" && resId.contains("story"))) {
+                return true
+            }
+
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { queue.add(it) }
+            }
+        }
+
+        return false
+    }
+
+    /**
      * Checks if a dedicated fullscreen Reel viewer is actively playing short-form video.
      * Catches Reels opened by tapping a Reel from Home feed, DMs, Explore, Profile, or the Reels tab.
      */
     private fun hasDedicatedFullscreenReel(root: AccessibilityNodeInfo): Boolean {
+        // If user is inside an Instagram Story, NEVER classify as dedicated Reels!
+        if (isInstagramStory(root)) {
+            return false
+        }
+
         val clipsPager = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_viewer_view_pager")
         if (!clipsPager.isNullOrEmpty() && clipsPager.any { isDedicatedFullscreenReel(it) }) {
             return true
@@ -790,11 +880,9 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         }
 
         // --- SAFEGUARD 2: Stories Viewer Immunity ---
-        if (!root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/story_progress").isNullOrEmpty()) return false
-        val storyViewer = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/reel_viewer_container")
-        if (!storyViewer.isNullOrEmpty()) {
-            val clipsPager = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_viewer_view_pager")
-            if (clipsPager.isNullOrEmpty() || !clipsPager.any { it.isVisibleToUser }) return false
+        // If user is watching any Story (including Reels shared/embedded inside a Story), NEVER BLOCK!
+        if (isInstagramStory(root)) {
+            return false
         }
 
         // --- SAFEGUARD 3: Direct Messages & Chat Immunity (Text / Inbox / General Tab) ---

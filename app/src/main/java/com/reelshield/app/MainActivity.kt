@@ -516,7 +516,58 @@ fun DashboardScreen(quotaManager: QuotaManager) {
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // --- 6. Testing & Simulation Controls (Rich Lab) ---
+        // --- 6. Protection Scope & Immunities ---
+        Text(
+            text = "PROTECTION SCOPE & IMMUNITIES",
+            color = TextSecondary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp,
+            fontFamily = FontFamily.Monospace
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = DarkSurface),
+            border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderColor))
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                ScopeItem(
+                    icon = "📸",
+                    title = "Stories & Shared Reels in Stories",
+                    status = "IMMUNE",
+                    description = "Watch friends' stories with zero interruptions, even if a Reel is shared in the story."
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                ScopeItem(
+                    icon = "💬",
+                    title = "Direct Messages & Chats",
+                    status = "IMMUNE",
+                    description = "Primary, General, Requests, and active typing are 100% protected."
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                ScopeItem(
+                    icon = "📰",
+                    title = "Home Feed & Photos",
+                    status = "IMMUNE",
+                    description = "Scroll posts, captions, and in-feed media without accidental ejection."
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                ScopeItem(
+                    icon = "⚡",
+                    title = "Dedicated Reels & Shorts",
+                    status = "BLOCKED",
+                    description = "Opening standalone Reels/Shorts triggers instant zero-delay backward exit."
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // --- 7. Testing & Simulation Controls (Rich Lab) ---
         Text(
             text = "TESTING & SIMULATION LAB",
             color = TextSecondary,
@@ -862,12 +913,69 @@ fun PermissionWizardCard(
     }
 }
 
+@Composable
+fun ScopeItem(
+    icon: String,
+    title: String,
+    status: String,
+    description: String
+) {
+    val isImmune = status == "IMMUNE"
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            text = icon,
+            fontSize = 18.sp,
+            modifier = Modifier.padding(end = 12.dp, top = 2.dp)
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = title,
+                    color = TextPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Box(
+                    modifier = Modifier
+                        .background(
+                            if (isImmune) StatusGreen.copy(alpha = 0.15f) else AccentRed.copy(alpha = 0.15f),
+                            RoundedCornerShape(6.dp)
+                        )
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = status,
+                        color = if (isImmune) StatusGreen else AccentRed,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = description,
+                color = TextSecondary,
+                fontSize = 11.sp,
+                lineHeight = 15.sp
+            )
+        }
+    }
+}
+
 private fun isAccessibilityServiceActive(context: Context): Boolean {
     val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager ?: return false
     val enabledServices = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
     return enabledServices.any { service ->
         val name = service.resolveInfo?.serviceInfo?.name ?: ""
-        name.contains("VideoBlocker") || name.contains("ReelShield") ||
-                service.id.contains("VideoBlocker") || service.id.contains("ReelShield")
+        name.contains("VideoBlocker") || name.contains("ReelShield") || name.contains("Kontre") ||
+                service.id.contains("VideoBlocker") || service.id.contains("ReelShield") || service.id.contains("Kontre")
     }
 }
