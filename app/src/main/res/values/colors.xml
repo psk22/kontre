@@ -1,0 +1,9 @@
+<resources>
+    <color name="black">#FF0A0A0A</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="accent_red">#FFFF3333</color>
+    <color name="card_dark">#FF18181A</color>
+    <color name="translucent_dark">#F00A0A0C</color>
+    <color name="text_gray">#FFAAAAAA</color>
+    <color name="border_gray">#FF2A2A2E</color>
+</resources>

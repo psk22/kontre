@@ -1,0 +1,20 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Built binaries
+build/
+app/build/
+*.apk
+*.aab
+
+# Keystore files (keep private if desired, or track if team project)
+# *.jks
+# *.keystore

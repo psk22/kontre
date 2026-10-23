@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">ReelShield</string>
+    <string name="accessibility_service_description">Monitors YouTube Shorts and Instagram Reels usage to help you maintain mindful digital consumption and enforce your daily 50-video limit.</string>
+</resources>
