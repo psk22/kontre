@@ -1,9 +1,22 @@
 <resources>
-    <color name="black">#FF0A0A0A</color>
-    <color name="white">#FFFFFFFF</color>
-    <color name="accent_red">#FFFF3333</color>
-    <color name="card_dark">#FF18181A</color>
-    <color name="translucent_dark">#F00A0A0C</color>
-    <color name="text_gray">#FFAAAAAA</color>
-    <color name="border_gray">#FF2A2A2E</color>
+    <!-- Superlist Midnight Workspace Palette (from DESIGN.md) -->
+    <color name="aubergine_canvas">#181824</color>
+    <color name="elevated_plum">#26253B</color>
+    <color name="elevated_plum_dark">#1E1D30</color>
+    <color name="pure_white">#FFFFFF</color>
+    <color name="fog_text">#696F81</color>
+    <color name="ash_text">#8E8DA0</color>
+    <color name="mist_highlight">#A3A3A7</color>
+    <color name="whisper_border">#32314A</color>
+    <color name="coral_ember">#FF4A36</color>
+    <color name="iris_accent">#535676</color>
+
+    <!-- Semantic & Legacy Compatibility Aliases -->
+    <color name="black">#181824</color>
+    <color name="white">#FFFFFF</color>
+    <color name="accent_red">#FF4A36</color>
+    <color name="card_dark">#26253B</color>
+    <color name="translucent_dark">#F2181824</color>
+    <color name="text_gray">#8E8DA0</color>
+    <color name="border_gray">#32314A</color>
 </resources>

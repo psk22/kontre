@@ -1,6 +1,5 @@
 package com.reelshield.app
 
-import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Context
 import android.content.Intent
@@ -13,6 +12,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -52,7 +52,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -60,17 +62,27 @@ import androidx.compose.ui.unit.sp
 import com.reelshield.app.data.QuotaManager
 import com.reelshield.app.service.KontreForegroundService
 import com.reelshield.app.service.VideoBlockerAccessibilityService
-import com.reelshield.app.ui.theme.AccentRed
+import com.reelshield.app.ui.theme.AshText
+import com.reelshield.app.ui.theme.AubergineCanvas
 import com.reelshield.app.ui.theme.BorderColor
+import com.reelshield.app.ui.theme.CoralEmber
+import com.reelshield.app.ui.theme.CoralEmberGlow
+import com.reelshield.app.ui.theme.CoralEmberMuted
 import com.reelshield.app.ui.theme.DarkBackground
 import com.reelshield.app.ui.theme.DarkSurface
 import com.reelshield.app.ui.theme.DarkSurfaceVariant
+import com.reelshield.app.ui.theme.ElevatedPlum
+import com.reelshield.app.ui.theme.ElevatedPlumDark
+import com.reelshield.app.ui.theme.FogText
+import com.reelshield.app.ui.theme.IrisAccent
 import com.reelshield.app.ui.theme.KontreTheme
+import com.reelshield.app.ui.theme.PureWhite
 import com.reelshield.app.ui.theme.StatusGreen
-import com.reelshield.app.ui.theme.StatusYellow
+import com.reelshield.app.ui.theme.StatusGreenMuted
 import com.reelshield.app.ui.theme.TextMuted
 import com.reelshield.app.ui.theme.TextPrimary
 import com.reelshield.app.ui.theme.TextSecondary
+import com.reelshield.app.ui.theme.WhisperBorder
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
@@ -86,7 +98,7 @@ class MainActivity : ComponentActivity() {
             KontreTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = DarkBackground
+                    color = AubergineCanvas
                 ) {
                     DashboardScreen(quotaManager = quotaManager)
                 }
@@ -149,8 +161,8 @@ fun DashboardScreen(quotaManager: QuotaManager) {
     )
 
     val progressColor = when {
-        quotaManager.isLimitReached -> AccentRed
-        totalCount >= 40 -> StatusYellow
+        quotaManager.isLimitReached -> CoralEmber
+        totalCount >= 40 -> CoralEmber
         else -> StatusGreen
     }
 
@@ -158,35 +170,43 @@ fun DashboardScreen(quotaManager: QuotaManager) {
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(20.dp)
+            .padding(horizontal = 20.dp, vertical = 24.dp)
     ) {
-        // --- 1. App Header ---
+        // --- 1. App Header (Superlist Hero Style) ---
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                androidx.compose.foundation.Image(
-                    painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_kontre_logo),
+                Image(
+                    painter = painterResource(id = R.drawable.ic_kontre_logo),
                     contentDescription = "Kontre Logo",
                     modifier = Modifier
                         .height(38.dp)
-                        .padding(end = 10.dp)
+                        .padding(end = 12.dp)
                 )
                 Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "KONTRE",
+                            color = PureWhite,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.5.sp
+                        )
+                        Box(
+                            modifier = Modifier
+                                .padding(start = 6.dp)
+                                .size(6.dp)
+                                .background(CoralEmber, CircleShape)
+                        )
+                    }
                     Text(
-                        text = "KONTRE",
-                        color = TextPrimary,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 2.sp,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Text(
-                        text = "Focus Guard & Video Blocker",
-                        color = TextSecondary,
-                        fontSize = 11.sp
+                        text = "Midnight focus workspace",
+                        color = FogText,
+                        fontSize = 12.sp,
+                        letterSpacing = (-0.2).sp
                     )
                 }
             }
@@ -195,182 +215,185 @@ fun DashboardScreen(quotaManager: QuotaManager) {
             Box(
                 modifier = Modifier
                     .background(
-                        color = if (isShieldActive) StatusGreen.copy(alpha = 0.15f) else StatusYellow.copy(alpha = 0.15f),
-                        shape = RoundedCornerShape(12.dp)
+                        color = if (isShieldActive) StatusGreenMuted else CoralEmberMuted,
+                        shape = RoundedCornerShape(100.dp)
                     )
                     .border(
                         1.dp,
-                        if (isShieldActive) StatusGreen else StatusYellow,
-                        RoundedCornerShape(12.dp)
+                        if (isShieldActive) StatusGreen.copy(alpha = 0.5f) else CoralEmber.copy(alpha = 0.5f),
+                        RoundedCornerShape(100.dp)
                     )
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
             ) {
                 Text(
-                    text = if (isShieldActive) "ACTIVE" else "SETUP NEEDED",
-                    color = if (isShieldActive) StatusGreen else StatusYellow,
+                    text = if (isShieldActive) "GUARD ACTIVE" else "SETUP NEEDED",
+                    color = if (isShieldActive) StatusGreen else CoralEmber,
                     fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.5.sp
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
-        // --- 2. Focus & Time Saved Stats ---
+        // --- 2. Focus & Time Saved Stats (20dp Cards) ---
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Card(
                 modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = DarkSurface),
-                border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderColor))
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = ElevatedPlum),
+                border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(WhisperBorder))
             ) {
-                Column(modifier = Modifier.padding(14.dp)) {
+                Column(modifier = Modifier.padding(18.dp)) {
                     Text(
                         text = "BLOCKED TODAY",
-                        color = TextSecondary,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
+                        color = AshText,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.5.sp
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = "$blockedCount",
-                        color = AccentRed,
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
+                        color = CoralEmber,
+                        fontSize = 32.sp,
+                        fontWeight = FontWeight.Bold
                     )
-                    Text(text = "Reels intercepted", color = TextMuted, fontSize = 11.sp)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(text = "Reels intercepted", color = FogText, fontSize = 12.sp)
                 }
             }
 
             Card(
                 modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = DarkSurface),
-                border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderColor))
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = ElevatedPlum),
+                border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(WhisperBorder))
             ) {
-                Column(modifier = Modifier.padding(14.dp)) {
+                Column(modifier = Modifier.padding(18.dp)) {
                     Text(
                         text = "TIME SAVED",
-                        color = TextSecondary,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
+                        color = AshText,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.5.sp
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = "~$timeSaved m",
-                        color = StatusGreen,
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
+                        color = PureWhite,
+                        fontSize = 32.sp,
+                        fontWeight = FontWeight.Bold
                     )
-                    Text(text = "Mindless scroll saved", color = TextMuted, fontSize = 11.sp)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(text = "Mindless scroll prevented", color = FogText, fontSize = 12.sp)
                 }
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // --- 3. Daily Allowance Progress Card ---
+        // --- 3. Daily Allowance Progress Card (20dp Plum Card) ---
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(containerColor = DarkSurface),
-            border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderColor))
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = ElevatedPlum),
+            border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(WhisperBorder))
         ) {
-            Column(modifier = Modifier.padding(20.dp)) {
+            Column(modifier = Modifier.padding(22.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (totalBlock) "TOTAL BLOCK MODE ACTIVE" else "DAILY ALLOWANCE",
-                        color = if (totalBlock) AccentRed else TextSecondary,
+                        text = if (totalBlock) "TOTAL LOCKOUT ENGAGED" else "DAILY ALLOWANCE",
+                        color = if (totalBlock) CoralEmber else AshText,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp,
-                        fontFamily = FontFamily.Monospace
+                        letterSpacing = 1.sp
                     )
-                    Text(
-                        text = "RESET AT 00:00",
-                        color = TextMuted,
-                        fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace
-                    )
+                    Box(
+                        modifier = Modifier
+                            .background(ElevatedPlumDark, RoundedCornerShape(100.dp))
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "RESETS AT 00:00",
+                            color = FogText,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(
                         text = "$totalCount",
                         color = progressColor,
-                        fontSize = 44.sp,
+                        fontSize = 48.sp,
                         fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
+                        letterSpacing = (-1.0).sp
                     )
                     Text(
                         text = if (totalBlock) " videos (0 allowed)" else " / $dailyLimit videos",
-                        color = TextSecondary,
+                        color = AshText,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(bottom = 6.dp, start = 4.dp)
+                        modifier = Modifier.padding(bottom = 8.dp, start = 6.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 LinearProgressIndicator(
                     progress = { animatedProgress },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(10.dp)
-                        .clip(RoundedCornerShape(5.dp)),
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(100.dp)),
                     color = progressColor,
-                    trackColor = DarkSurfaceVariant
+                    trackColor = ElevatedPlumDark
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(18.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column {
-                        Text(text = "Instagram Reels", color = TextSecondary, fontSize = 12.sp)
+                        Text(text = "Instagram Reels", color = FogText, fontSize = 12.sp)
                         Text(
                             text = "$reelsCount",
-                            color = TextPrimary,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
+                            color = PureWhite,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
 
                     Column {
-                        Text(text = "YouTube Shorts", color = TextSecondary, fontSize = 12.sp)
+                        Text(text = "YouTube Shorts", color = FogText, fontSize = 12.sp)
                         Text(
                             text = "$shortsCount",
-                            color = TextPrimary,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
+                            color = PureWhite,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
 
                     Column {
-                        Text(text = "Resets In", color = TextSecondary, fontSize = 12.sp)
+                        Text(text = "Resets In", color = FogText, fontSize = 12.sp)
                         Text(
                             text = countdownText,
-                            color = TextPrimary,
-                            fontSize = 13.sp,
+                            color = PureWhite,
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace
                         )
@@ -379,25 +402,24 @@ fun DashboardScreen(quotaManager: QuotaManager) {
             }
         }
 
-        Spacer(modifier = Modifier.height(22.dp))
+        Spacer(modifier = Modifier.height(28.dp))
 
-        // --- 4. System Permissions Checklist (Step 1 & Step 2 Only) ---
+        // --- 4. System Permissions Checklist ---
         Text(
-            text = "SYSTEM PERMISSIONS CHECKLIST",
-            color = TextSecondary,
+            text = "SYSTEM PERMISSIONS",
+            color = AshText,
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp,
-            fontFamily = FontFamily.Monospace
+            letterSpacing = 1.sp
         )
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         // 1. Accessibility Service Card
         PermissionWizardCard(
             stepNumber = "1",
             title = "Accessibility Service",
-            description = "Traverses view hierarchies to intercept short-form video viewers in real-time.",
+            description = "Traverses view trees to intercept short-form video viewers in real-time.",
             isGranted = isAccessibilityEnabled,
             actionLabel = "Enable Service",
             onAction = {
@@ -409,11 +431,12 @@ fun DashboardScreen(quotaManager: QuotaManager) {
         )
 
         if (!isAccessibilityEnabled && isRestrictedBlocked) {
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(DarkSurfaceVariant, RoundedCornerShape(10.dp))
+                    .background(ElevatedPlumDark, RoundedCornerShape(20.dp))
+                    .border(1.dp, CoralEmber.copy(alpha = 0.4f), RoundedCornerShape(20.dp))
                     .clickable {
                         val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                             data = Uri.parse("package:${context.packageName}")
@@ -421,24 +444,28 @@ fun DashboardScreen(quotaManager: QuotaManager) {
                         }
                         context.startActivity(intent)
                     }
-                    .padding(12.dp),
+                    .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "🔒",
-                    fontSize = 20.sp,
-                    modifier = Modifier.padding(end = 10.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(CoralEmberMuted, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "🔒", fontSize = 16.sp)
+                }
+                Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "Samsung Restricted Setting Detected",
-                        color = StatusYellow,
-                        fontSize = 12.sp,
+                        color = CoralEmber,
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Tap here -> Tap 3 dots (⋮) in top-right -> Tap \"Allow restricted settings\" -> Confirm PIN.",
-                        color = TextSecondary,
+                        text = "Tap here -> Tap 3 dots (⋮) top-right -> \"Allow restricted settings\" -> Confirm PIN.",
+                        color = FogText,
                         fontSize = 11.sp,
                         lineHeight = 15.sp
                     )
@@ -446,13 +473,13 @@ fun DashboardScreen(quotaManager: QuotaManager) {
             }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         // 2. Draw Over Other Apps Card
         PermissionWizardCard(
             stepNumber = "2",
             title = "Draw Over Other Apps",
-            description = "Required for the floating top reel counter pill to display over video players.",
+            description = "Required for the floating top video quota status pill to display over video players.",
             isGranted = isOverlayGranted,
             actionLabel = "Grant Overlay",
             onAction = {
@@ -466,27 +493,26 @@ fun DashboardScreen(quotaManager: QuotaManager) {
             }
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(28.dp))
 
         // --- 5. Configuration & Platform Toggles ---
         Text(
-            text = "BLOCKING RULES & TOGGLES",
-            color = TextSecondary,
+            text = "PLATFORM TOGGLES",
+            color = AshText,
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp,
-            fontFamily = FontFamily.Monospace
+            letterSpacing = 1.sp
         )
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = DarkSurface),
-            border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderColor))
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = ElevatedPlum),
+            border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(WhisperBorder))
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(modifier = Modifier.padding(20.dp)) {
                 // Toggle Instagram
                 ToggleRow(
                     title = "Block Instagram Reels",
@@ -498,7 +524,7 @@ fun DashboardScreen(quotaManager: QuotaManager) {
                     }
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // Toggle YouTube Shorts
                 ToggleRow(
@@ -511,14 +537,12 @@ fun DashboardScreen(quotaManager: QuotaManager) {
                     }
                 )
 
-
-
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // Total Block Toggle
                 ToggleRow(
                     title = "Total Block Mode (0 Allowance)",
-                    subtitle = "Instantly blocks every Reel/Short with zero daily quota allowance",
+                    subtitle = "Instantly intercepts every Reel/Short with zero daily quota allowance",
                     checked = totalBlock,
                     onCheckedChange = {
                         totalBlock = it
@@ -528,48 +552,47 @@ fun DashboardScreen(quotaManager: QuotaManager) {
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(28.dp))
 
         // --- 6. Protection Scope & Immunities ---
         Text(
             text = "PROTECTION SCOPE & IMMUNITIES",
-            color = TextSecondary,
+            color = AshText,
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp,
-            fontFamily = FontFamily.Monospace
+            letterSpacing = 1.sp
         )
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = DarkSurface),
-            border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderColor))
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = ElevatedPlum),
+            border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(WhisperBorder))
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(modifier = Modifier.padding(20.dp)) {
                 ScopeItem(
                     icon = "📸",
                     title = "Stories & Shared Reels in Stories",
                     status = "IMMUNE",
                     description = "Watch friends' stories with zero interruptions, even if a Reel is shared in the story."
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
                 ScopeItem(
                     icon = "💬",
                     title = "Direct Messages & Chats",
                     status = "IMMUNE",
                     description = "Primary, General, Requests, and active typing are 100% protected."
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
                 ScopeItem(
                     icon = "📰",
                     title = "Home Feed & Photos",
                     status = "IMMUNE",
                     description = "Scroll posts, captions, and in-feed media without accidental ejection."
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
                 ScopeItem(
                     icon = "⚡",
                     title = "Dedicated Reels & Shorts",
@@ -579,19 +602,18 @@ fun DashboardScreen(quotaManager: QuotaManager) {
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(28.dp))
 
         // --- 7. Testing & Simulation Controls (Rich Lab) ---
         Text(
             text = "TESTING & SIMULATION LAB",
-            color = TextSecondary,
+            color = AshText,
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp,
-            fontFamily = FontFamily.Monospace
+            letterSpacing = 1.sp
         )
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         // Row 1: Quick Increments
         Row(
@@ -605,10 +627,10 @@ fun DashboardScreen(quotaManager: QuotaManager) {
                     Toast.makeText(context, "Logged +1 Reel (${reelsCount + shortsCount}/$dailyLimit)", Toast.LENGTH_SHORT).show()
                 },
                 modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
-                shape = RoundedCornerShape(10.dp)
+                colors = ButtonDefaults.buttonColors(containerColor = ElevatedPlumDark),
+                shape = RoundedCornerShape(100.dp)
             ) {
-                Text(text = "+1 Reel", color = TextPrimary, fontSize = 13.sp)
+                Text(text = "+1 Reel", color = PureWhite, fontSize = 13.sp)
             }
 
             Button(
@@ -618,14 +640,14 @@ fun DashboardScreen(quotaManager: QuotaManager) {
                     Toast.makeText(context, "Logged +1 Short (${reelsCount + shortsCount}/$dailyLimit)", Toast.LENGTH_SHORT).show()
                 },
                 modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
-                shape = RoundedCornerShape(10.dp)
+                colors = ButtonDefaults.buttonColors(containerColor = ElevatedPlumDark),
+                shape = RoundedCornerShape(100.dp)
             ) {
-                Text(text = "+1 Short", color = TextPrimary, fontSize = 13.sp)
+                Text(text = "+1 Short", color = PureWhite, fontSize = 13.sp)
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         // Row 2: Milestone Presets (25 & 40)
         Row(
@@ -641,10 +663,10 @@ fun DashboardScreen(quotaManager: QuotaManager) {
                     Toast.makeText(context, "Set to 25/50 (Halfway mark)", Toast.LENGTH_SHORT).show()
                 },
                 modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
-                shape = RoundedCornerShape(10.dp)
+                colors = ButtonDefaults.buttonColors(containerColor = ElevatedPlumDark),
+                shape = RoundedCornerShape(100.dp)
             ) {
-                Text(text = "Set to 25/50", color = TextPrimary, fontSize = 13.sp)
+                Text(text = "Set to 25/50", color = PureWhite, fontSize = 13.sp)
             }
 
             Button(
@@ -656,14 +678,14 @@ fun DashboardScreen(quotaManager: QuotaManager) {
                     Toast.makeText(context, "Set to 40/50 (Warning zone)", Toast.LENGTH_SHORT).show()
                 },
                 modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
-                shape = RoundedCornerShape(10.dp)
+                colors = ButtonDefaults.buttonColors(containerColor = ElevatedPlumDark),
+                shape = RoundedCornerShape(100.dp)
             ) {
-                Text(text = "Set to 40/50 (Warn)", color = StatusYellow, fontSize = 13.sp)
+                Text(text = "Set to 40/50", color = CoralEmber, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         // Row 3: Lock Boundaries (49 & 50)
         Row(
@@ -679,10 +701,10 @@ fun DashboardScreen(quotaManager: QuotaManager) {
                     Toast.makeText(context, "Set to 49/50 (1 video until lock)", Toast.LENGTH_SHORT).show()
                 },
                 modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
-                shape = RoundedCornerShape(10.dp)
+                colors = ButtonDefaults.buttonColors(containerColor = ElevatedPlumDark),
+                shape = RoundedCornerShape(100.dp)
             ) {
-                Text(text = "Set to 49/50", color = TextPrimary, fontSize = 13.sp)
+                Text(text = "Set to 49/50", color = PureWhite, fontSize = 13.sp)
             }
 
             Button(
@@ -694,14 +716,14 @@ fun DashboardScreen(quotaManager: QuotaManager) {
                     Toast.makeText(context, "Set to 50/50 (Lock active)", Toast.LENGTH_SHORT).show()
                 },
                 modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
-                shape = RoundedCornerShape(10.dp)
+                colors = ButtonDefaults.buttonColors(containerColor = CoralEmber),
+                shape = RoundedCornerShape(100.dp)
             ) {
-                Text(text = "Lock 50/50 Now", color = AccentRed, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text(text = "Lock 50/50 Now", color = PureWhite, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         // Row 4: Pill Previews (Normal, Warning, Locked)
         Row(
@@ -714,76 +736,57 @@ fun DashboardScreen(quotaManager: QuotaManager) {
                     Toast.makeText(context, "Showing normal counter pill [12/50] at top for 4s", Toast.LENGTH_SHORT).show()
                 },
                 modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
-                shape = RoundedCornerShape(10.dp)
+                colors = ButtonDefaults.buttonColors(containerColor = ElevatedPlumDark),
+                shape = RoundedCornerShape(100.dp)
             ) {
-                Text(text = "Pill Normal", color = TextPrimary, fontSize = 11.sp)
+                Text(text = "Pill Normal", color = PureWhite, fontSize = 11.sp)
             }
 
             Button(
                 onClick = {
                     VideoBlockerAccessibilityService.previewFloatingPill(previewState = 1)
-                    Toast.makeText(context, "Showing warning counter pill [45/50] at top for 4s", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Showing warn counter pill [42/50] at top for 4s", Toast.LENGTH_SHORT).show()
                 },
                 modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
-                shape = RoundedCornerShape(10.dp)
+                colors = ButtonDefaults.buttonColors(containerColor = ElevatedPlumDark),
+                shape = RoundedCornerShape(100.dp)
             ) {
-                Text(text = "Pill Warn ⚠️", color = StatusYellow, fontSize = 11.sp)
+                Text(text = "Pill Warn", color = CoralEmber, fontSize = 11.sp)
             }
 
             Button(
                 onClick = {
                     VideoBlockerAccessibilityService.previewFloatingPill(previewState = 2)
-                    Toast.makeText(context, "Showing locked counter pill [50/50] at top for 4s", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Showing locked pill [50/50 LOCKED] at top for 4s", Toast.LENGTH_SHORT).show()
                 },
                 modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
-                shape = RoundedCornerShape(10.dp)
+                colors = ButtonDefaults.buttonColors(containerColor = CoralEmber),
+                shape = RoundedCornerShape(100.dp)
             ) {
-                Text(text = "Pill Lock 🔒", color = AccentRed, fontSize = 11.sp)
+                Text(text = "Pill Locked", color = PureWhite, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
-        // Row 5: Action Simulations (Eject & Dwell Simulation)
-        Row(
+        // Row 5: Manual Ejection Test
+        Button(
+            onClick = {
+                val ejected = VideoBlockerAccessibilityService.testEjectAction()
+                if (ejected) {
+                    Toast.makeText(context, "Executed zero-overlay backward ejection!", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "Enable Kontre Accessibility Service first in Step 1", Toast.LENGTH_LONG).show()
+                }
+            },
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            colors = ButtonDefaults.buttonColors(containerColor = ElevatedPlumDark),
+            shape = RoundedCornerShape(100.dp)
         ) {
-            Button(
-                onClick = {
-                    val success = VideoBlockerAccessibilityService.testEjectAction()
-                    if (success) {
-                        Toast.makeText(context, "Executed GLOBAL_ACTION_BACK (Eject)!", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(context, "Accessibility service not active - enable it in Step 1", Toast.LENGTH_LONG).show()
-                    }
-                },
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Text(text = "Test Eject (Back)", color = TextPrimary, fontSize = 12.sp)
-            }
-
-            Button(
-                onClick = {
-                    quotaManager.incrementReels()
-                    reelsCount = quotaManager.reelsCount
-                    VideoBlockerAccessibilityService.previewFloatingPill(previewState = if (quotaManager.isLimitReached) 2 else 0)
-                    Toast.makeText(context, "Simulated 1.8s reel watch (${reelsCount + shortsCount}/$dailyLimit)", Toast.LENGTH_SHORT).show()
-                },
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Text(text = "Simulate Watch", color = TextPrimary, fontSize = 12.sp)
-            }
+            Text(text = "Simulate Instant Reel Ejection", color = PureWhite, fontSize = 13.sp)
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         // Row 6: Reset All Counters
         OutlinedButton(
@@ -801,12 +804,13 @@ fun DashboardScreen(quotaManager: QuotaManager) {
                 Toast.makeText(context, "All counters reset to 0/50", Toast.LENGTH_SHORT).show()
             },
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(10.dp)
+            shape = RoundedCornerShape(100.dp),
+            border = ButtonDefaults.outlinedButtonBorder.copy(brush = SolidColor(WhisperBorder))
         ) {
-            Text(text = "Reset All Counters to 0/50", color = TextSecondary, fontSize = 13.sp)
+            Text(text = "Reset All Counters to 0/50", color = AshText, fontSize = 13.sp)
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(28.dp))
     }
 }
 
@@ -822,18 +826,20 @@ fun ToggleRow(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-            Text(text = title, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            Text(text = subtitle, color = TextSecondary, fontSize = 11.sp, lineHeight = 15.sp)
+        Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
+            Text(text = title, color = PureWhite, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(text = subtitle, color = FogText, fontSize = 12.sp, lineHeight = 16.sp)
         }
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
-                checkedTrackColor = AccentRed,
-                uncheckedThumbColor = TextMuted,
-                uncheckedTrackColor = DarkSurfaceVariant
+                checkedThumbColor = PureWhite,
+                checkedTrackColor = CoralEmber,
+                uncheckedThumbColor = FogText,
+                uncheckedTrackColor = ElevatedPlumDark,
+                uncheckedBorderColor = WhisperBorder
             )
         )
     }
@@ -850,15 +856,13 @@ fun PermissionWizardCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = ElevatedPlum),
         border = CardDefaults.outlinedCardBorder().copy(
-            brush = androidx.compose.ui.graphics.SolidColor(
-                if (isGranted) BorderColor else StatusYellow.copy(alpha = 0.5f)
-            )
+            brush = SolidColor(if (isGranted) WhisperBorder else CoralEmber.copy(alpha = 0.4f))
         )
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(20.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -867,23 +871,22 @@ fun PermissionWizardCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .size(24.dp)
-                            .background(if (isGranted) StatusGreen.copy(alpha = 0.2f) else StatusYellow.copy(alpha = 0.2f), CircleShape)
-                            .border(1.dp, if (isGranted) StatusGreen else StatusYellow, CircleShape),
+                            .size(26.dp)
+                            .background(if (isGranted) StatusGreenMuted else CoralEmberMuted, CircleShape)
+                            .border(1.dp, if (isGranted) StatusGreen.copy(alpha = 0.6f) else CoralEmber.copy(alpha = 0.6f), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = stepNumber,
-                            color = if (isGranted) StatusGreen else StatusYellow,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
+                            color = if (isGranted) StatusGreen else CoralEmber,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
-                    Spacer(modifier = Modifier.width(10.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
                     Text(
                         text = title,
-                        color = TextPrimary,
+                        color = PureWhite,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -891,31 +894,33 @@ fun PermissionWizardCard(
 
                 Box(
                     modifier = Modifier
-                        .size(10.dp)
-                        .background(if (isGranted) StatusGreen else StatusYellow, CircleShape)
+                        .size(8.dp)
+                        .background(if (isGranted) StatusGreen else CoralEmber, CircleShape)
                 )
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             Text(
                 text = description,
-                color = TextSecondary,
+                color = FogText,
                 fontSize = 12.sp,
-                lineHeight = 16.sp
+                lineHeight = 17.sp
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             Button(
                 onClick = onAction,
                 enabled = !isGranted,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isGranted) DarkSurfaceVariant else AccentRed,
-                    contentColor = if (isGranted) TextMuted else Color.White
+                    containerColor = if (isGranted) ElevatedPlumDark else CoralEmber,
+                    contentColor = if (isGranted) FogText else PureWhite
                 ),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.fillMaxWidth()
+                shape = RoundedCornerShape(100.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
             ) {
                 Text(
                     text = if (isGranted) "Configured ✓" else actionLabel,
@@ -952,31 +957,31 @@ fun ScopeItem(
             ) {
                 Text(
                     text = title,
-                    color = TextPrimary,
+                    color = PureWhite,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold
                 )
                 Box(
                     modifier = Modifier
                         .background(
-                            if (isImmune) StatusGreen.copy(alpha = 0.15f) else AccentRed.copy(alpha = 0.15f),
-                            RoundedCornerShape(6.dp)
+                            if (isImmune) IrisAccent.copy(alpha = 0.2f) else CoralEmberMuted,
+                            RoundedCornerShape(100.dp)
                         )
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
                 ) {
                     Text(
                         text = status,
-                        color = if (isImmune) StatusGreen else AccentRed,
+                        color = if (isImmune) AshText else CoralEmber,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
+                        letterSpacing = 0.5.sp
                     )
                 }
             }
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = description,
-                color = TextSecondary,
+                color = FogText,
                 fontSize = 11.sp,
                 lineHeight = 15.sp
             )

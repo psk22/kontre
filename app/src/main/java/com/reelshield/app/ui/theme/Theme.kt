@@ -4,20 +4,21 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 
-private val DarkColorScheme = darkColorScheme(
-    primary = AccentRed,
-    background = DarkBackground,
-    surface = DarkSurface,
-    surfaceVariant = DarkSurfaceVariant,
-    onPrimary = TextPrimary,
-    onBackground = TextPrimary,
-    onSurface = TextPrimary
+private val SuperlistDarkColorScheme = darkColorScheme(
+    primary = CoralEmber,
+    background = AubergineCanvas,
+    surface = ElevatedPlum,
+    surfaceVariant = ElevatedPlumDark,
+    onPrimary = PureWhite,
+    onBackground = PureWhite,
+    onSurface = PureWhite,
+    outline = WhisperBorder
 )
 
 @Composable
 fun KontreTheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = DarkColorScheme,
+        colorScheme = SuperlistDarkColorScheme,
         content = content
     )
 }
