@@ -1,4 +1,4 @@
-# ReelShield 🛡️ (BrainPal Clone Architecture)
+# ReelShield 🛡️
 > **A high-performance Android short-form video blocker targeting Instagram Reels & YouTube Shorts while preserving full access to DMs, chats, stories, and feed posts.**
 
 ---
