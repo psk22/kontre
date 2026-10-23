@@ -119,6 +119,9 @@ fun DashboardScreen(quotaManager: QuotaManager) {
     var isOverlayGranted by remember {
         mutableStateOf(Settings.canDrawOverlays(context))
     }
+    var isRestrictedBlocked by remember {
+        mutableStateOf(isRestrictedSettingsBlocked(context))
+    }
 
     // Live 1-second refresh ticker
     LaunchedEffect(Unit) {
@@ -130,6 +133,7 @@ fun DashboardScreen(quotaManager: QuotaManager) {
             timeSaved = quotaManager.timeSavedMinutes
             isAccessibilityEnabled = isAccessibilityServiceActive(context)
             isOverlayGranted = Settings.canDrawOverlays(context)
+            isRestrictedBlocked = isRestrictedSettingsBlocked(context)
             delay(1000L)
         }
     }
@@ -395,8 +399,8 @@ fun DashboardScreen(quotaManager: QuotaManager) {
             }
         )
 
-        if (!isAccessibilityEnabled) {
-            Spacer(modifier = Modifier.height(6.dp))
+        if (!isAccessibilityEnabled && isRestrictedBlocked) {
+            Spacer(modifier = Modifier.height(8.dp))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -413,20 +417,21 @@ fun DashboardScreen(quotaManager: QuotaManager) {
             ) {
                 Text(
                     text = "🔒",
-                    fontSize = 18.sp,
+                    fontSize = 20.sp,
                     modifier = Modifier.padding(end = 10.dp)
                 )
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Samsung / Android 13+ \"Restricted setting\"?",
-                        color = TextPrimary,
+                        text = "Samsung Restricted Setting Detected",
+                        color = StatusYellow,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "If greyed out: tap here -> tap 3 dots (⋮) top right -> select \"Allow restricted settings\" -> then turn on.",
+                        text = "Tap here -> Tap 3 dots (⋮) in top-right -> Tap \"Allow restricted settings\" -> Confirm PIN.",
                         color = TextSecondary,
-                        fontSize = 11.sp
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp
                     )
                 }
             }
@@ -977,5 +982,17 @@ private fun isAccessibilityServiceActive(context: Context): Boolean {
         val name = service.resolveInfo?.serviceInfo?.name ?: ""
         name.contains("VideoBlocker") || name.contains("ReelShield") || name.contains("Kontre") ||
                 service.id.contains("VideoBlocker") || service.id.contains("ReelShield") || service.id.contains("Kontre")
+    }
+}
+
+private fun isRestrictedSettingsBlocked(context: Context): Boolean {
+    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) return false
+    return try {
+        val appOpsManager = context.getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+        val uid = context.packageManager.getApplicationInfo(context.packageName, 0).uid
+        val mode = appOpsManager.unsafeCheckOpNoThrow("android:access_restricted_settings", uid, context.packageName)
+        mode != android.app.AppOpsManager.MODE_ALLOWED
+    } catch (e: Exception) {
+        false
     }
 }
