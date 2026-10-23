@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "ReelShield"
+rootProject.name = "Kontre"
 include(":app")

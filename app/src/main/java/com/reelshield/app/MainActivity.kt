@@ -164,7 +164,7 @@ fun DashboardScreen(quotaManager: QuotaManager) {
         ) {
             Column {
                 Text(
-                    text = "REELSHIELD",
+                    text = "KONTRE",
                     color = TextPrimary,
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Black,

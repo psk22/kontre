@@ -1,4 +1,4 @@
-# ReelShield 🛡️
+# Kontre 🛡️
 > **A high-performance Android short-form video blocker targeting Instagram Reels & YouTube Shorts while preserving full access to DMs, chats, stories, and feed posts.**
 
 ---
@@ -37,7 +37,7 @@
    - Opening a Reel or Short executes `performGlobalAction(GLOBAL_ACTION_BACK)` to immediately step out.
    - **No intrusive fullscreen overlays, no popups, and no dialogs**.
 
-### 4. Foreground Service & Lifecycle Stability (`ReelShieldForegroundService`)
+### 4. Foreground Service & Lifecycle Stability (`ReelShieldForegroundService` / Kontre)
 - Sticky `ForegroundService` (`START_STICKY`) with ongoing notification to prevent Android's OOM low-memory killer.
 - Configured with `foregroundServiceType="specialUse"` and `PROPERTY_SPECIAL_USE_FGS_SUBTYPE` for Android 14+ compliance.
 - Supports battery optimization exemption (`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`).
@@ -97,5 +97,5 @@ For the comprehensive architecture breakdown, heuristics guide, and bug fix engi
 ---
 
 ## 🚀 Automated Builds & GitHub Actions
-- **Continuous Integration**: Every push to `main` automatically runs `./gradlew assembleRelease` via GitHub Actions and publishes the signed `ReelShield-release.apk` as a build artifact.
-- **Releases**: Creating and pushing a tag (e.g. `v1.0.0`) automatically publishes a GitHub Release with the attached APK ready to download directly on any phone.
+- **Continuous Integration**: Every push to `main` automatically runs `./gradlew assembleRelease` via GitHub Actions and publishes the signed `Kontre-release.apk` as a build artifact.
+- **Releases**: Creating and pushing a tag (e.g. `v1.0.0`) automatically publishes a GitHub Release with the attached `Kontre-release.apk` ready to download directly on any phone.

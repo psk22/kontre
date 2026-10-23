@@ -1,4 +1,4 @@
-name: Build & Release ReelShield APK
+name: Build & Release Kontre APK
 
 on:
   push:
@@ -41,13 +41,14 @@ jobs:
       - name: Rename APK for Distribution
         run: |
           mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk dist/Kontre-release.apk
           cp app/build/outputs/apk/release/app-release.apk dist/ReelShield-release.apk
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ReelShield-release-apk
-          path: dist/ReelShield-release.apk
+          name: Kontre-release-apk
+          path: dist/Kontre-release.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -55,7 +56,9 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/ReelShield-release.apk
+          files: |
+            dist/Kontre-release.apk
+            dist/ReelShield-release.apk
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

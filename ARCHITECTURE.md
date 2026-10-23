@@ -1,9 +1,9 @@
-# ReelShield: Short-Form Video Blocker & Focus Guard
+# Kontre: Short-Form Video Blocker & Focus Guard
 > **Comprehensive Architecture, Implementation, Bug Fixes & Verification Guide**
 
-**ReelShield** is a production-grade native Android digital wellbeing application built with **Kotlin** and **Jetpack Compose** (target SDK 35, Android 15 ready). It is engineered to break mindless doom-scrolling habits across **Instagram Reels** (Standard & Lite) and **YouTube Shorts** without resorting to blunt app-level blockers that break communication or feed browsing.
+**Kontre** is a production-grade native Android digital wellbeing application built with **Kotlin** and **Jetpack Compose** (target SDK 35, Android 15 ready). It is engineered to break mindless doom-scrolling habits across **Instagram Reels** (Standard & Lite) and **YouTube Shorts** without resorting to blunt app-level blockers that break communication or feed browsing.
 
-Unlike aggressive app blockers that shut down Instagram or YouTube entirely, ReelShield preserves **Direct Messages (DMs)**, **Chats**, **General/Primary tabs**, **Stories**, and **Home Feed post browsing**, while selectively detecting, capping, and ejecting users from immersive short-form video loops.
+Unlike aggressive app blockers that shut down Instagram or YouTube entirely, Kontre preserves **Direct Messages (DMs)**, **Chats**, **General/Primary tabs**, **Stories**, and **Home Feed post browsing**, while selectively detecting, capping, and ejecting users from immersive short-form video loops.
 
 ---
 

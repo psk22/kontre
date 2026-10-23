@@ -60,10 +60,10 @@ class ReelShieldForegroundService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "ReelShield Protection Service",
+                "Kontre Protection Service",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Keeps ReelShield monitoring active in background without battery kill"
+                description = "Keeps Kontre monitoring active in background without battery kill"
                 setShowBadge(false)
             }
             val manager = getSystemService(NotificationManager::class.java)
@@ -81,7 +81,7 @@ class ReelShieldForegroundService : Service() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("ReelShield Active")
+            .setContentTitle("Kontre Active")
             .setContentText("Protecting your focus • Short-form limits enforced")
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setOngoing(true)
