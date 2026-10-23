@@ -302,16 +302,16 @@ By default on many carrier builds or when enabled:
 ## 9. GitHub Integration & Automated CI/CD Releases
 
 ### Repository Details
-- **Remote**: [`https://github.com/psk22/ReelShield`](https://github.com/psk22/ReelShield)
+- **Remote**: [`https://github.com/psk22/kontre`](https://github.com/psk22/kontre)
 - **Primary Branch**: `main`
 
 ### Automated Build Workflow (`.github/workflows/build-apk.yml`)
 - **Triggers**:
   - Push / Pull Request to `main`.
-  - Pushing any version tag (e.g., `v1.0.0`).
+  - Pushing any version tag (e.g., `v1.0.2`).
   - Manual execution via `workflow_dispatch` in the Actions tab.
 - **Pipeline Operations**:
   1. Sets up JDK 17 (Temurin) and Gradle caching.
-  2. Runs `./gradlew assembleRelease` signed with `reelshield-release.jks`.
-  3. Renames output to `ReelShield-release.apk` and archives it as a downloadable 30-day build artifact.
-  4. On tag pushes (`v*`), automatically publishes a **GitHub Release** and attaches `ReelShield-release.apk` for direct download on any Android device.
+  2. Runs `./gradlew assembleRelease` signed with production release keystore.
+  3. Renames output to `Kontre-release.apk` and archives it as a downloadable 30-day build artifact.
+  4. On tag pushes (`v*`), automatically publishes a **GitHub Release** and attaches `Kontre-release.apk` for direct download on any Android device.
