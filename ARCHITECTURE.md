@@ -284,3 +284,22 @@ By default on many carrier builds or when enabled:
 4. Tap and install **`ReelShield-release.apk`**.
 5. *(Optional)* After the app is installed, you can toggle Auto Blocker back **ON**! ReelShield will continue running with full protection.
 6. Enable the two permissions inside ReelShield (Accessibility Service & Overlay). If Samsung shows a *"Restricted setting"* prompt for Accessibility, go to **Settings $\rightarrow$ Apps $\rightarrow$ ReelShield**, tap the **3 dots (⋮)** in the top right, tap **"Allow restricted settings"**, and toggle the service ON.
+
+---
+
+## 9. GitHub Integration & Automated CI/CD Releases
+
+### Repository Details
+- **Remote**: [`https://github.com/psk22/ReelShield`](https://github.com/psk22/ReelShield)
+- **Primary Branch**: `main`
+
+### Automated Build Workflow (`.github/workflows/build-apk.yml`)
+- **Triggers**:
+  - Push / Pull Request to `main`.
+  - Pushing any version tag (e.g., `v1.0.0`).
+  - Manual execution via `workflow_dispatch` in the Actions tab.
+- **Pipeline Operations**:
+  1. Sets up JDK 17 (Temurin) and Gradle caching.
+  2. Runs `./gradlew assembleRelease` signed with `reelshield-release.jks`.
+  3. Renames output to `ReelShield-release.apk` and archives it as a downloadable 30-day build artifact.
+  4. On tag pushes (`v*`), automatically publishes a **GitHub Release** and attaches `ReelShield-release.apk` for direct download on any Android device.
