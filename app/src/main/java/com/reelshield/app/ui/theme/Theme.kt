@@ -15,7 +15,7 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 @Composable
-fun ReelShieldTheme(content: @Composable () -> Unit) {
+fun KontreTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = DarkColorScheme,
         content = content

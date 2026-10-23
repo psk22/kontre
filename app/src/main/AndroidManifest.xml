@@ -19,12 +19,12 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.ReelShield">
+        android:theme="@style/Theme.Kontre">
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:theme="@style/Theme.ReelShield">
+            android:theme="@style/Theme.Kontre">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -36,11 +36,11 @@
             android:exported="false"
             android:launchMode="singleTop"
             android:excludeFromRecents="true"
-            android:theme="@style/Theme.ReelShield.Overlay" />
+            android:theme="@style/Theme.Kontre.Overlay" />
 
         <!-- Sticky Foreground Service for lifecycle stability & OOM protection -->
         <service
-            android:name=".service.ReelShieldForegroundService"
+            android:name=".service.KontreForegroundService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
             <property

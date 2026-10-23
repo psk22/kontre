@@ -85,7 +85,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         instance = this
         quotaManager = QuotaManager(applicationContext)
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        ReelShieldForegroundService.start(this)
+        KontreForegroundService.start(this)
         Log.i(TAG, "VideoBlockerAccessibilityService initialized.")
     }
 

@@ -9,8 +9,24 @@ import java.util.Locale
 
 class QuotaManager(context: Context) {
 
-    private val prefs: SharedPreferences =
-        context.getSharedPreferences("reelshield_prefs", Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = run {
+        val newPrefs = context.getSharedPreferences("kontre_prefs", Context.MODE_PRIVATE)
+        val oldPrefs = context.getSharedPreferences("reelshield_prefs", Context.MODE_PRIVATE)
+        if (oldPrefs.all.isNotEmpty() && newPrefs.all.isEmpty()) {
+            val editor = newPrefs.edit()
+            oldPrefs.all.forEach { (k, v) ->
+                when (v) {
+                    is Boolean -> editor.putBoolean(k, v)
+                    is Int -> editor.putInt(k, v)
+                    is Long -> editor.putLong(k, v)
+                    is Float -> editor.putFloat(k, v)
+                    is String -> editor.putString(k, v)
+                }
+            }
+            editor.apply()
+        }
+        newPrefs
+    }
 
     companion object {
         const val DEFAULT_DAILY_LIMIT = 50

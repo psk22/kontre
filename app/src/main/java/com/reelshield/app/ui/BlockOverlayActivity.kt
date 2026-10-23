@@ -52,7 +52,7 @@ import com.reelshield.app.ui.theme.BorderColor
 import com.reelshield.app.ui.theme.DarkBackground
 import com.reelshield.app.ui.theme.DarkSurface
 import com.reelshield.app.ui.theme.DarkSurfaceVariant
-import com.reelshield.app.ui.theme.ReelShieldTheme
+import com.reelshield.app.ui.theme.KontreTheme
 import com.reelshield.app.ui.theme.TextPrimary
 import com.reelshield.app.ui.theme.TextSecondary
 import kotlinx.coroutines.delay
@@ -72,7 +72,7 @@ class BlockOverlayActivity : ComponentActivity() {
         sourceApp = intent.getStringExtra(EXTRA_SOURCE_APP)
 
         setContent {
-            ReelShieldTheme {
+            KontreTheme {
                 BlockOverlayScreen(
                     quotaManager = quotaManager,
                     sourceApp = sourceApp,

@@ -14,31 +14,31 @@ import androidx.core.app.NotificationCompat
 import com.reelshield.app.MainActivity
 import com.reelshield.app.R
 
-class ReelShieldForegroundService : Service() {
+class KontreForegroundService : Service() {
 
     companion object {
-        const val CHANNEL_ID = "channel_reelshield_monitor"
+        const val CHANNEL_ID = "channel_kontre_monitor"
         const val NOTIFICATION_ID = 1001
 
         fun start(context: Context) {
             try {
-                val intent = Intent(context, ReelShieldForegroundService::class.java)
+                val intent = Intent(context, KontreForegroundService::class.java)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     context.startForegroundService(intent)
                 } else {
                     context.startService(intent)
                 }
             } catch (e: Exception) {
-                android.util.Log.e("ReelShieldFGS", "Failed to start foreground service safely", e)
+                android.util.Log.e("KontreFGS", "Failed to start foreground service safely", e)
             }
         }
 
         fun stop(context: Context) {
             try {
-                val intent = Intent(context, ReelShieldForegroundService::class.java)
+                val intent = Intent(context, KontreForegroundService::class.java)
                 context.stopService(intent)
             } catch (e: Exception) {
-                android.util.Log.e("ReelShieldFGS", "Failed to stop foreground service", e)
+                android.util.Log.e("KontreFGS", "Failed to stop foreground service", e)
             }
         }
     }
@@ -48,7 +48,7 @@ class ReelShieldForegroundService : Service() {
         try {
             createNotificationChannel()
         } catch (e: Exception) {
-            android.util.Log.e("ReelShieldFGS", "Failed to create notification channel", e)
+            android.util.Log.e("KontreFGS", "Failed to create notification channel", e)
         }
     }
 
@@ -65,7 +65,7 @@ class ReelShieldForegroundService : Service() {
                 startForeground(NOTIFICATION_ID, notification)
             }
         } catch (e: Exception) {
-            android.util.Log.e("ReelShieldFGS", "Failed in startForeground", e)
+            android.util.Log.e("KontreFGS", "Failed in startForeground", e)
         }
         return START_STICKY
     }

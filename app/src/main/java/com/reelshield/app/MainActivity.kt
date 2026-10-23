@@ -58,14 +58,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.reelshield.app.data.QuotaManager
-import com.reelshield.app.service.ReelShieldForegroundService
+import com.reelshield.app.service.KontreForegroundService
 import com.reelshield.app.service.VideoBlockerAccessibilityService
 import com.reelshield.app.ui.theme.AccentRed
 import com.reelshield.app.ui.theme.BorderColor
 import com.reelshield.app.ui.theme.DarkBackground
 import com.reelshield.app.ui.theme.DarkSurface
 import com.reelshield.app.ui.theme.DarkSurfaceVariant
-import com.reelshield.app.ui.theme.ReelShieldTheme
+import com.reelshield.app.ui.theme.KontreTheme
 import com.reelshield.app.ui.theme.StatusGreen
 import com.reelshield.app.ui.theme.StatusYellow
 import com.reelshield.app.ui.theme.TextMuted
@@ -80,10 +80,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         quotaManager = QuotaManager(this)
-        ReelShieldForegroundService.start(this)
+        KontreForegroundService.start(this)
 
         setContent {
-            ReelShieldTheme {
+            KontreTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = DarkBackground
@@ -166,20 +166,29 @@ fun DashboardScreen(quotaManager: QuotaManager) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
-                Text(
-                    text = "KONTRE",
-                    color = TextPrimary,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 2.sp,
-                    fontFamily = FontFamily.Monospace
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_kontre_logo),
+                    contentDescription = "Kontre Logo",
+                    modifier = Modifier
+                        .height(38.dp)
+                        .padding(end = 10.dp)
                 )
-                Text(
-                    text = "Short-Form Video Blocker & Focus Guard",
-                    color = TextSecondary,
-                    fontSize = 12.sp
-                )
+                Column {
+                    Text(
+                        text = "KONTRE",
+                        color = TextPrimary,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 2.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Text(
+                        text = "Focus Guard & Video Blocker",
+                        color = TextSecondary,
+                        fontSize = 11.sp
+                    )
+                }
             }
 
             val isShieldActive = isAccessibilityEnabled && isOverlayGranted
@@ -625,7 +634,7 @@ fun DashboardScreen(quotaManager: QuotaManager) {
         ) {
             Button(
                 onClick = {
-                    val prefs = context.getSharedPreferences("reelshield_prefs", Context.MODE_PRIVATE)
+                    val prefs = context.getSharedPreferences("kontre_prefs", Context.MODE_PRIVATE)
                     prefs.edit().putInt("key_reels_count", 25).putInt("key_shorts_count", 0).apply()
                     reelsCount = 25
                     shortsCount = 0
@@ -640,7 +649,7 @@ fun DashboardScreen(quotaManager: QuotaManager) {
 
             Button(
                 onClick = {
-                    val prefs = context.getSharedPreferences("reelshield_prefs", Context.MODE_PRIVATE)
+                    val prefs = context.getSharedPreferences("kontre_prefs", Context.MODE_PRIVATE)
                     prefs.edit().putInt("key_reels_count", 40).putInt("key_shorts_count", 0).apply()
                     reelsCount = 40
                     shortsCount = 0
@@ -663,7 +672,7 @@ fun DashboardScreen(quotaManager: QuotaManager) {
         ) {
             Button(
                 onClick = {
-                    val prefs = context.getSharedPreferences("reelshield_prefs", Context.MODE_PRIVATE)
+                    val prefs = context.getSharedPreferences("kontre_prefs", Context.MODE_PRIVATE)
                     prefs.edit().putInt("key_reels_count", 49).putInt("key_shorts_count", 0).apply()
                     reelsCount = 49
                     shortsCount = 0
@@ -678,7 +687,7 @@ fun DashboardScreen(quotaManager: QuotaManager) {
 
             Button(
                 onClick = {
-                    val prefs = context.getSharedPreferences("reelshield_prefs", Context.MODE_PRIVATE)
+                    val prefs = context.getSharedPreferences("kontre_prefs", Context.MODE_PRIVATE)
                     prefs.edit().putInt("key_reels_count", 50).putInt("key_shorts_count", 0).apply()
                     reelsCount = 50
                     shortsCount = 0
@@ -779,7 +788,7 @@ fun DashboardScreen(quotaManager: QuotaManager) {
         // Row 6: Reset All Counters
         OutlinedButton(
             onClick = {
-                val prefs = context.getSharedPreferences("reelshield_prefs", Context.MODE_PRIVATE)
+                val prefs = context.getSharedPreferences("kontre_prefs", Context.MODE_PRIVATE)
                 prefs.edit()
                     .putInt("key_reels_count", 0)
                     .putInt("key_shorts_count", 0)
@@ -980,8 +989,8 @@ private fun isAccessibilityServiceActive(context: Context): Boolean {
     val enabledServices = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
     return enabledServices.any { service ->
         val name = service.resolveInfo?.serviceInfo?.name ?: ""
-        name.contains("VideoBlocker") || name.contains("ReelShield") || name.contains("Kontre") ||
-                service.id.contains("VideoBlocker") || service.id.contains("ReelShield") || service.id.contains("Kontre")
+        name.contains("VideoBlocker") || name.contains("Kontre") ||
+                service.id.contains("VideoBlocker") || service.id.contains("Kontre")
     }
 }
 
