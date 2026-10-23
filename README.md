@@ -92,5 +92,10 @@ adb shell settings put secure accessibility_enabled 1
 adb shell appops set com.reelshield.app SYSTEM_ALERT_WINDOW allow
 ```
 
-For the comprehensive architecture breakdown, heuristics guide, and bug fix engineering log, see [`.agents/read.md`](../.agents/read.md).
+For the comprehensive architecture breakdown, heuristics guide, and bug fix engineering log, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
+---
+
+## 🚀 Automated Builds & GitHub Actions
+- **Continuous Integration**: Every push to `main` automatically runs `./gradlew assembleRelease` via GitHub Actions and publishes the signed `ReelShield-release.apk` as a build artifact.
+- **Releases**: Creating and pushing a tag (e.g. `v1.0.0`) automatically publishes a GitHub Release with the attached APK ready to download directly on any phone.
