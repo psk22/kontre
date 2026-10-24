@@ -251,18 +251,10 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 }
             }
         } else {
-            // Check if user is explicitly on an immune screen
-            val isExplicitImmune = (packageName == PACKAGE_INSTAGRAM || packageName == PACKAGE_INSTAGRAM_LITE) &&
-                    (isInstagramStory(rootNode) || isInstagramTextingOrChatting(rootNode) || isInstagramHomeFeed(rootNode))
-            val isYtImmune = packageName == PACKAGE_YOUTUBE && isYouTubeTextingOrComments(rootNode)
-
-            if (isExplicitImmune || isYtImmune) {
-                cancelPendingHidePill()
-                cancelDwellTimer()
-                hideCounterPill()
-            } else {
-                scheduleDebouncedHidePill()
-            }
+            // User is NOT watching a short-form video: immediately hide counter pill and cancel dwell timer!
+            cancelPendingHidePill()
+            cancelDwellTimer()
+            hideCounterPill()
         }
     }
 
@@ -348,6 +340,12 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             }
             if (isInstagramHomeFeed(currentRoot)) {
                 Log.d(TAG, "Intervention aborted: user is browsing Instagram Home feed.")
+                cancelDwellTimer()
+                hideCounterPill()
+                return
+            }
+            if (isInstagramProfileOrExplore(currentRoot)) {
+                Log.d(TAG, "Intervention aborted: user is on Profile, Notifications, or Explore grid.")
                 cancelDwellTimer()
                 hideCounterPill()
                 return
@@ -636,19 +634,27 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
      */
     private fun isInstagramReelsTabSelected(root: AccessibilityNodeInfo): Boolean {
         val clipsTab = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_tab")
-        if (!clipsTab.isNullOrEmpty() && clipsTab.any { it.isSelected }) return true
+        if (!clipsTab.isNullOrEmpty()) {
+            if (clipsTab.any { it.isSelected }) return true
+            for (tab in clipsTab) {
+                for (i in 0 until tab.childCount) {
+                    val child = tab.getChild(i) ?: continue
+                    if (child.isSelected) return true
+                }
+            }
+        }
 
         val tabNodes = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/tab_bar")
-        if (!tabNodes.isNullOrEmpty()) {
-            val tabBar = tabNodes.first()
+        val bottomBars = if (!tabNodes.isNullOrEmpty()) tabNodes else root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/bottom_navigation_bar")
+        if (!bottomBars.isNullOrEmpty()) {
+            val tabBar = bottomBars.first()
             for (i in 0 until tabBar.childCount) {
                 val child = tabBar.getChild(i) ?: continue
-                if (child.isSelected) {
-                    val desc = (child.contentDescription?.toString() ?: "").lowercase()
-                    val resId = (child.viewIdResourceName ?: "").lowercase()
-                    if (resId.contains("clips_tab") || desc == "reels" || desc.startsWith("reels,") || desc == "clips") {
-                        return true
-                    }
+                val desc = (child.contentDescription?.toString() ?: "").lowercase()
+                val resId = (child.viewIdResourceName ?: "").lowercase()
+                val isSelected = child.isSelected || (0 until child.childCount).any { child.getChild(it)?.isSelected == true }
+                if (isSelected && (resId.contains("clips_tab") || desc == "reels" || desc.startsWith("reels,") || desc == "clips")) {
+                    return true
                 }
             }
         }
@@ -660,20 +666,28 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
      * Works across standard Instagram and Instagram Lite.
      */
     private fun isInstagramHomeTabSelected(root: AccessibilityNodeInfo): Boolean {
-        val feedTab = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/feed_tab")
-        if (!feedTab.isNullOrEmpty() && feedTab.any { it.isSelected }) return true
+        val feedTabs = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/feed_tab")
+        if (!feedTabs.isNullOrEmpty()) {
+            if (feedTabs.any { it.isSelected }) return true
+            for (tab in feedTabs) {
+                for (i in 0 until tab.childCount) {
+                    val child = tab.getChild(i) ?: continue
+                    if (child.isSelected) return true
+                }
+            }
+        }
 
         val tabNodes = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/tab_bar")
-        if (!tabNodes.isNullOrEmpty()) {
-            val tabBar = tabNodes.first()
+        val bottomBars = if (!tabNodes.isNullOrEmpty()) tabNodes else root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/bottom_navigation_bar")
+        if (!bottomBars.isNullOrEmpty()) {
+            val tabBar = bottomBars.first()
             for (i in 0 until tabBar.childCount) {
                 val child = tabBar.getChild(i) ?: continue
-                if (child.isSelected) {
-                    val desc = (child.contentDescription?.toString() ?: "").lowercase()
-                    val resId = (child.viewIdResourceName ?: "").lowercase()
-                    if (resId.contains("feed_tab") || desc == "home" || desc.startsWith("home,") || desc == "feed") {
-                        return true
-                    }
+                val desc = (child.contentDescription?.toString() ?: "").lowercase()
+                val resId = (child.viewIdResourceName ?: "").lowercase()
+                val isSelected = child.isSelected || (0 until child.childCount).any { child.getChild(it)?.isSelected == true }
+                if (isSelected && (resId.contains("feed_tab") || desc == "home" || desc.startsWith("home,") || desc == "feed")) {
+                    return true
                 }
             }
         }
@@ -688,14 +702,17 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
     private fun isInstagramStory(root: AccessibilityNodeInfo): Boolean {
         // 1. Check known Story Progress Bar and Container View IDs
         val storyViewIds = listOf(
-            "com.instagram.android:id/story_progress",
-            "com.instagram.android:id/stories_progress_bar",
-            "com.instagram.android:id/segment_progress_bar",
+            "com.instagram.android:id/reel_viewer_container",
             "com.instagram.android:id/reel_viewer_progress_bar",
+            "com.instagram.android:id/stories_progress_bar",
+            "com.instagram.android:id/story_progress",
+            "com.instagram.android:id/segment_progress_bar",
             "com.instagram.android:id/story_item",
             "com.instagram.android:id/story_viewer_reply",
             "com.instagram.android:id/story_reply_composer",
-            "com.instagram.android:id/direct_story_reply"
+            "com.instagram.android:id/direct_story_reply",
+            "com.instagram.android:id/reel_viewer_image_view",
+            "com.instagram.android:id/viewer_media_view_container"
         )
 
         for (id in storyViewIds) {
@@ -705,19 +722,10 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             }
         }
 
-        // 2. Check for reel_viewer_container with active story progress bars
-        val reelViewerContainer = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/reel_viewer_container")
-        if (!reelViewerContainer.isNullOrEmpty() && reelViewerContainer.any { it.isVisibleToUser }) {
-            val hasStoryBars = !root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/story_progress").isNullOrEmpty() ||
-                    !root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/reel_viewer_progress_bar").isNullOrEmpty() ||
-                    !root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/segment_progress_bar").isNullOrEmpty()
-            if (hasStoryBars) return true
-        }
-
-        // 3. Tree-walk check for Story progress bar, reply prompts, or story header
+        // 2. Tree-walk check for Story progress bar, reply prompts, or story header
         val queue = ArrayDeque<AccessibilityNodeInfo>().apply { add(root) }
         var visited = 0
-        while (queue.isNotEmpty() && visited < 70) {
+        while (queue.isNotEmpty() && visited < 80) {
             val node = queue.removeFirst()
             visited++
 
@@ -726,7 +734,8 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             val text = (node.text?.toString() ?: "").trim().lowercase()
 
             if (resId.contains("story_progress") || resId.contains("stories_progress") ||
-                resId.contains("segment_progress") || resId.contains("reel_viewer_progress")) {
+                resId.contains("segment_progress") || resId.contains("reel_viewer_progress") ||
+                resId.contains("reel_viewer_container")) {
                 return true
             }
 
@@ -739,7 +748,6 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 return true
             }
 
-            // Story reply field placeholder at bottom
             if (text.startsWith("reply to ") || desc.startsWith("reply to ") ||
                 (text == "send message" && resId.contains("story")) ||
                 (desc == "send message" && resId.contains("story"))) {
@@ -755,86 +763,9 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Checks if a dedicated fullscreen Reel viewer is actively playing short-form video.
-     * Catches Reels opened by tapping a Reel from Home feed, DMs, Explore, Profile, or the Reels tab.
-     */
-    private fun hasDedicatedFullscreenReel(root: AccessibilityNodeInfo): Boolean {
-        // If user is inside an Instagram Story, NEVER classify as dedicated Reels!
-        if (isInstagramStory(root)) {
-            return false
-        }
-
-        // 1. Clips ViewPager (dedicated vertical swipe player for Reels)
-        val clipsPager = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_viewer_view_pager")
-        if (!clipsPager.isNullOrEmpty()) {
-            return true
-        }
-
-        // 2. Clips Viewer Container (dedicated viewer)
-        val viewerContainer = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_viewer_container")
-        if (!viewerContainer.isNullOrEmpty()) {
-            return true
-        }
-
-        // 3. Root Clips Layout (dedicated layout)
-        val rootClips = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/root_clips_layout")
-        if (!rootClips.isNullOrEmpty()) {
-            return true
-        }
-
-        // 4. Clips Video Container
-        val videoContainer = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_video_container")
-        if (!videoContainer.isNullOrEmpty()) {
-            return true
-        }
-
-        // 5. Swipe Refresh Container inside Clips
-        val clipsSwipe = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_swipe_refresh_container")
-        if (!clipsSwipe.isNullOrEmpty()) {
-            return true
-        }
-
-        // 6. Dedicated Reels bottom tab selected in tab_bar
-        if (isInstagramReelsTabSelected(root)) {
-            return true
-        }
-
-        // 7. Clips UFI actions bar (Like, comment, share, audio buttons)
-        val clipsUfi = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_ufi_like_button")
-        if (!clipsUfi.isNullOrEmpty()) {
-            return true
-        }
-        val clipsAudio = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_audio_mix_button")
-        if (!clipsAudio.isNullOrEmpty()) {
-            return true
-        }
-
-        // 8. Tree walk for clips_viewer / clips_action / "Reel by"
-        val queue = ArrayDeque<AccessibilityNodeInfo>().apply { add(root) }
-        var visited = 0
-        while (queue.isNotEmpty() && visited < 40) {
-            val node = queue.removeFirst()
-            visited++
-            val resId = (node.viewIdResourceName ?: "").lowercase()
-            val desc = (node.contentDescription?.toString() ?: "").lowercase()
-            if (resId.contains("clips_viewer") || resId.contains("clips_video") || resId.contains("clips_action")) {
-                return true
-            }
-            if (desc.startsWith("reel by") || desc.contains("reel by @")) {
-                return true
-            }
-            for (i in 0 until node.childCount) {
-                node.getChild(i)?.let { queue.add(it) }
-            }
-        }
-
-        return false
-    }
-
-    /**
      * Complete immunity shield for Instagram Direct Messages (DMs), Chats, Inbox,
-     * Message Threads, Primary/General filter tabs, Commenting, and Story/Note Replying.
-     * When user is in DMs, they are 100% immune unless a dedicated fullscreen Reel viewer is opened on top.
+     * Message Threads, Primary/General filter tabs, Commenting, and Note Replying.
+     * Guaranteed 100% immunity: even if a chat contains shared Reel previews, the user will NOT be ejected.
      */
     private fun isInstagramTextingOrChatting(root: AccessibilityNodeInfo): Boolean {
         // 1. If actively typing with keyboard or focused EditText, user is texting!
@@ -842,12 +773,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             return true
         }
 
-        // 2. If dedicated fullscreen Reel viewer is active, user is watching a Reel (NOT chatting)
-        if (hasDedicatedFullscreenReel(root)) {
-            return false
-        }
-
-        // 3. Direct Messages & Chat Known View IDs (standard Instagram)
+        // 2. Direct Messages & Chat Known View IDs
         val dmViewIds = listOf(
             "com.instagram.android:id/direct_message_list",
             "com.instagram.android:id/row_thread_composer",
@@ -876,19 +802,25 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         for (id in dmViewIds) {
             val nodes = root.findAccessibilityNodeInfosByViewId(id)
             if (!nodes.isNullOrEmpty()) {
+                // If user deliberately tapped a Reel from chat and it opened in dedicated fullscreen Clips ViewPager:
+                val clipsPager = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_viewer_view_pager")
+                if (!clipsPager.isNullOrEmpty() && clipsPager.any { it.isVisibleToUser && isDedicatedFullscreenReel(it) }) {
+                    return false
+                }
                 return true
             }
         }
 
-        // 4. Content description, text, and keyword matching across the tree
+        // 3. Content description, text, and keyword matching across the tree
         val queue = ArrayDeque<AccessibilityNodeInfo>().apply { add(root) }
         var visited = 0
-        while (queue.isNotEmpty() && visited < 60) {
+        while (queue.isNotEmpty() && visited < 70) {
             val node = queue.removeFirst()
             visited++
 
             val text = (node.text?.toString() ?: "").trim().lowercase()
             val desc = (node.contentDescription?.toString() ?: "").trim().lowercase()
+            val resId = (node.viewIdResourceName ?: "").lowercase()
 
             // DM filter tabs (General, Primary, Requests, Channels)
             if (text == "general" || desc == "general" || text == "primary" || desc == "primary" ||
@@ -903,6 +835,10 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 return true
             }
 
+            if (resId.contains("direct_inbox") || resId.contains("direct_thread")) {
+                return true
+            }
+
             for (i in 0 until node.childCount) {
                 node.getChild(i)?.let { queue.add(it) }
             }
@@ -912,29 +848,52 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Checks if the user is currently on the Instagram Home feed (scrolling/viewing posts).
-     * In-feed video posts in the feed should NOT trigger Reel blocking.
+     * Complete immunity shield for the Instagram Home feed (scrolling/viewing posts).
+     * In-feed video posts in the feed should NEVER trigger Reel blocking or ejection.
      */
     private fun isInstagramHomeFeed(root: AccessibilityNodeInfo): Boolean {
-        // 1. If dedicated fullscreen Reel viewer is active, user is watching a Reel (NOT feed)
-        if (hasDedicatedFullscreenReel(root)) {
+        // If a dedicated fullscreen Clips ViewPager is visibly covering the screen, user tapped into a Reel
+        val clipsPager = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_viewer_view_pager")
+        if (!clipsPager.isNullOrEmpty() && clipsPager.any { it.isVisibleToUser && isDedicatedFullscreenReel(it) }) {
             return false
         }
 
-        // 2. Check if the bottom Home / Feed tab is selected (covers both standard and Lite)
+        // 1. Check if the bottom Home / Feed tab is selected
         if (isInstagramHomeTabSelected(root)) {
             return true
         }
 
-        // 3. Check for Home feed list containers in standard Instagram
+        // 2. Check for Home feed containers and headers
         val feedIds = listOf(
             "com.instagram.android:id/feed_recycler_view",
-            "com.instagram.android:id/main_feed_container"
+            "com.instagram.android:id/main_feed_container",
+            "com.instagram.android:id/action_bar_title_logo",
+            "com.instagram.android:id/action_bar_inbox_button",
+            "com.instagram.android:id/action_bar_share_button",
+            "com.instagram.android:id/stories_tray",
+            "com.instagram.android:id/reel_tray",
+            "com.instagram.android:id/tray_recycler_view"
         )
         for (id in feedIds) {
             val nodes = root.findAccessibilityNodeInfosByViewId(id)
-            if (!nodes.isNullOrEmpty()) {
+            if (!nodes.isNullOrEmpty() && nodes.any { it.isVisibleToUser }) {
                 return true
+            }
+        }
+
+        // 3. Tree-walk check for Instagram home logo
+        val queue = ArrayDeque<AccessibilityNodeInfo>().apply { add(root) }
+        var visited = 0
+        while (queue.isNotEmpty() && visited < 40) {
+            val node = queue.removeFirst()
+            visited++
+            val desc = (node.contentDescription?.toString() ?: "").trim().lowercase()
+            val resId = (node.viewIdResourceName ?: "").lowercase()
+            if (desc == "instagram" || resId.contains("action_bar_title_logo") || resId.contains("feed_recycler")) {
+                return true
+            }
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { queue.add(it) }
             }
         }
 
@@ -942,40 +901,100 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Checks for a dedicated fullscreen Reel viewer when not on Home feed and not in DMs.
-     * (E.g. tapped a Reel in Instagram Lite outside feed/DMs).
+     * Complete immunity shield for Profile, Notifications/Activity, and Explore Search Grid.
      */
-    private fun isGenericFullscreenReel(root: AccessibilityNodeInfo): Boolean {
-        val queue = ArrayDeque<AccessibilityNodeInfo>().apply { add(root) }
-        var count = 0
-        var hasFullscreenVideo = false
-        var hasReelIndicator = false
+    private fun isInstagramProfileOrExplore(root: AccessibilityNodeInfo): Boolean {
+        // 1. Profile tab selected
+        val profileTabs = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/profile_tab")
+        if (!profileTabs.isNullOrEmpty() && profileTabs.any { it.isSelected }) return true
 
-        while (queue.isNotEmpty() && count < 60) {
-            val node = queue.removeFirst()
-            count++
+        // 2. Activity / Notifications tab selected
+        val newsTabs = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/news_tab")
+        if (!newsTabs.isNullOrEmpty() && newsTabs.any { it.isSelected }) return true
 
-            val resId = (node.viewIdResourceName ?: "").lowercase()
-            val desc = (node.contentDescription?.toString() ?: "").lowercase()
-
-            if (isDedicatedFullscreenReel(node)) {
-                hasFullscreenVideo = true
-                if (desc.contains("reel") || desc.contains("clip") || resId.contains("clips")) {
-                    hasReelIndicator = true
+        // 3. Tab bar checks
+        val tabNodes = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/tab_bar")
+        val bottomBars = if (!tabNodes.isNullOrEmpty()) tabNodes else root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/bottom_navigation_bar")
+        if (!bottomBars.isNullOrEmpty()) {
+            val tabBar = bottomBars.first()
+            for (i in 0 until tabBar.childCount) {
+                val child = tabBar.getChild(i) ?: continue
+                val desc = (child.contentDescription?.toString() ?: "").lowercase()
+                val isSelected = child.isSelected || (0 until child.childCount).any { child.getChild(it)?.isSelected == true }
+                if (isSelected) {
+                    if (desc.contains("profile") || desc.contains("activity") || desc.contains("notification")) {
+                        return true
+                    }
+                    if (desc.contains("search") || desc.contains("explore")) {
+                        val clipsPager = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_viewer_view_pager")
+                        val isClipsVisible = !clipsPager.isNullOrEmpty() && clipsPager.any { it.isVisibleToUser && isDedicatedFullscreenReel(it) }
+                        if (!isClipsVisible) return true
+                    }
                 }
-            }
-
-            if (desc.contains("reel by") || desc.contains("remix") || desc.contains("use audio") ||
-                resId.contains("clips_action") || resId.contains("clips_viewer")) {
-                hasReelIndicator = true
-            }
-
-            for (i in 0 until node.childCount) {
-                node.getChild(i)?.let { queue.add(it) }
             }
         }
 
-        return hasFullscreenVideo && hasReelIndicator
+        // 4. Profile bio or header
+        val profileHeaders = listOf(
+            "com.instagram.android:id/profile_header_bio_text",
+            "com.instagram.android:id/action_bar_title_profile",
+            "com.instagram.android:id/edit_profile_button"
+        )
+        for (id in profileHeaders) {
+            val nodes = root.findAccessibilityNodeInfosByViewId(id)
+            if (!nodes.isNullOrEmpty() && nodes.any { it.isVisibleToUser }) return true
+        }
+
+        return false
+    }
+
+    /**
+     * Checks if a dedicated fullscreen Reel viewer is actively playing short-form video.
+     * Only matches when the dedicated Reels tab is selected or the fullscreen Clips ViewPager is active.
+     */
+    private fun isDedicatedReelViewerActive(root: AccessibilityNodeInfo): Boolean {
+        // Condition 1: Dedicated Reels bottom navigation tab is selected
+        if (isInstagramReelsTabSelected(root)) {
+            return true
+        }
+
+        // Condition 2: Dedicated Clips ViewPager / Container is active and occupies full screen
+        val clipsPagerIds = listOf(
+            "com.instagram.android:id/clips_viewer_view_pager",
+            "com.instagram.android:id/clips_viewer_container",
+            "com.instagram.android:id/root_clips_layout"
+        )
+        for (id in clipsPagerIds) {
+            val nodes = root.findAccessibilityNodeInfosByViewId(id)
+            if (!nodes.isNullOrEmpty()) {
+                val activeNode = nodes.firstOrNull { it.isVisibleToUser && isDedicatedFullscreenReel(it) }
+                if (activeNode != null) {
+                    return true
+                }
+            }
+        }
+
+        return false
+    }
+
+    private fun isYouTubeHomeOrSubscriptionsSelected(root: AccessibilityNodeInfo): Boolean {
+        val tabNodes = root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/bottom_navigation_bar")
+        val tabs = if (!tabNodes.isNullOrEmpty()) tabNodes else root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/pivot_bar")
+        if (!tabs.isNullOrEmpty()) {
+            val bar = tabs.first()
+            for (i in 0 until bar.childCount) {
+                val child = bar.getChild(i) ?: continue
+                val isSelected = child.isSelected || (0 until child.childCount).any { child.getChild(it)?.isSelected == true }
+                if (isSelected) {
+                    val desc = (child.contentDescription?.toString() ?: "").lowercase()
+                    if (desc == "home" || desc.startsWith("home,") ||
+                        desc.contains("subscriptions") || desc.contains("you")) {
+                        return true
+                    }
+                }
+            }
+        }
+        return false
     }
 
     private fun isYouTubeTextingOrComments(root: AccessibilityNodeInfo): Boolean {
@@ -1001,7 +1020,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
     /**
      * Heuristic Short-Form Video Detector:
      * Combines Resource ID matching, Content Description matching, and Hierarchy/Dimension structure.
-     * Detects Reels opened from Reels Tab, Home Feed, DMs, or links, while safeguarding Chats, Stories, and Feeds.
+     * Detects Reels opened from Reels Tab or fullscreen viewer, while safeguarding Chats, Stories, and Feeds.
      */
     private fun detectShortFormVideo(root: AccessibilityNodeInfo, packageName: String): Boolean {
         val rootPkg = root.packageName?.toString() ?: ""
@@ -1021,31 +1040,31 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             return false
         }
 
-        // --- SAFEGUARD 2: Stories Viewer Immunity ---
+        // --- SAFEGUARD 2: Stories Viewer Immunity (Absolute Priority!) ---
         // If user is watching any Story (including Reels shared/embedded inside a Story), NEVER BLOCK!
         if (isInstagramStory(root)) {
             return false
         }
 
-        // --- SIGNATURE 1: Dedicated Fullscreen Clips ViewPager or Reels Tab ---
-        // Catches Reels opened from Reels tab, Home feed, Explore, Profile, or links!
-        if (hasDedicatedFullscreenReel(root)) {
-            return true
-        }
-
-        // --- SAFEGUARD 3: Direct Messages & Chat Immunity (Text / Inbox / General Tab) ---
+        // --- SAFEGUARD 3: Direct Messages & Chat Immunity (Absolute Priority!) ---
+        // If user is inside Instagram DMs/inbox/chat, NEVER BLOCK!
         if (isInstagramTextingOrChatting(root)) {
             return false
         }
 
-        // --- SAFEGUARD 4: Home Feed Immunity ---
-        // If the user is on the Home feed scrolling/viewing regular posts, DO NOT BLOCK!
+        // --- SAFEGUARD 4: Home Feed Immunity (Absolute Priority!) ---
+        // If user is on the Home page, scrolling Home feed, viewing in-feed posts, NEVER BLOCK!
         if (isInstagramHomeFeed(root)) {
             return false
         }
 
-        // --- SIGNATURE 2: Generic / Lite Fullscreen Reel Player ---
-        return isGenericFullscreenReel(root)
+        // --- SAFEGUARD 5: Profile, Notifications, Explore Grid Immunity ---
+        if (isInstagramProfileOrExplore(root)) {
+            return false
+        }
+
+        // --- ONLY DETECT DEDICATED REEL VIEWER ---
+        return isDedicatedReelViewerActive(root)
     }
 
     private fun detectYouTubeShorts(root: AccessibilityNodeInfo): Boolean {
@@ -1053,6 +1072,8 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         if (isKeyboardVisible() || isUserActivelyTyping(root) || isYouTubeTextingOrComments(root)) {
             return false
         }
+
+        val isHomeOrSubs = isYouTubeHomeOrSubscriptionsSelected(root)
 
         // SIGNATURE 1: Dedicated Shorts player container or time bar
         val shortsViewIds = listOf(
@@ -1068,32 +1089,30 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         for (id in shortsViewIds) {
             val nodes = root.findAccessibilityNodeInfosByViewId(id)
             if (!nodes.isNullOrEmpty()) {
-                return true
+                val fullScreenNode = nodes.firstOrNull { isFullScreenNode(it) }
+                if (fullScreenNode != null) {
+                    return true
+                }
             }
         }
 
-        // SIGNATURE 2: Shorts Tab selected in bottom bar or Shorts Action Overlay Buttons
-        val queue = ArrayDeque<AccessibilityNodeInfo>().apply { add(root) }
-        var visited = 0
-        while (queue.isNotEmpty() && visited < 50) {
-            val node = queue.removeFirst()
-            visited++
+        if (isHomeOrSubs) {
+            return false
+        }
 
-            val desc = (node.contentDescription?.toString() ?: "").lowercase()
-            val resId = (node.viewIdResourceName ?: "").lowercase()
-
-            if (node.isSelected) {
-                if (desc.contains("short") || resId.contains("shorts_tab")) return true
-                if (desc == "home" || desc.startsWith("home,") || desc == "subscriptions" || desc == "you") return false
-            }
-
-            if (desc.startsWith("like this video") || desc.startsWith("dislike this video") || desc.startsWith("remix this video") ||
-                resId.contains("reel_like") || resId.contains("reel_comment")) {
-                return true
-            }
-
-            for (i in 0 until node.childCount) {
-                node.getChild(i)?.let { queue.add(it) }
+        // SIGNATURE 2: Shorts Tab selected in bottom bar
+        val tabNodes = root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/bottom_navigation_bar")
+        val tabs = if (!tabNodes.isNullOrEmpty()) tabNodes else root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/pivot_bar")
+        if (!tabs.isNullOrEmpty()) {
+            val bar = tabs.first()
+            for (i in 0 until bar.childCount) {
+                val child = bar.getChild(i) ?: continue
+                val isSelected = child.isSelected || (0 until child.childCount).any { child.getChild(it)?.isSelected == true }
+                if (isSelected) {
+                    val desc = (child.contentDescription?.toString() ?: "").lowercase()
+                    val resId = (child.viewIdResourceName ?: "").lowercase()
+                    if (desc.contains("short") || resId.contains("shorts_tab")) return true
+                }
             }
         }
 
