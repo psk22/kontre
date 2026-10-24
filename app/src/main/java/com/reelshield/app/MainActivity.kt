@@ -135,7 +135,17 @@ fun DashboardScreen(quotaManager: QuotaManager) {
         mutableStateOf(isRestrictedSettingsBlocked(context))
     }
 
-    // Live 1-second refresh ticker
+    // Immediate reactive updates via StateFlow
+    LaunchedEffect(Unit) {
+        quotaManager.totalCountFlow.collect {
+            reelsCount = quotaManager.reelsCount
+            shortsCount = quotaManager.shortsCount
+            blockedCount = quotaManager.blockedTodayCount
+            timeSaved = quotaManager.timeSavedMinutes
+        }
+    }
+
+    // Live 1-second refresh ticker for clock countdown & permission changes
     LaunchedEffect(Unit) {
         while (true) {
             countdownText = quotaManager.getTimeUntilMidnightFormatted()

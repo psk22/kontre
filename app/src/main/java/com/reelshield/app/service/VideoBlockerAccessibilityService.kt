@@ -37,10 +37,12 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
     val mainHandler = Handler(Looper.getMainLooper())
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    // Dwell Coroutine Job
-    private var dwellJob: Job? = null
-    var isShortFormCurrentlyActive = false
-    private var activeDwellPackage: String? = null
+    // Reel Session & Deduplication Tracker
+    lateinit var reelSessionTracker: ReelSessionTracker
+        private set
+
+    val isShortFormCurrentlyActive: Boolean
+        get() = ::reelSessionTracker.isInitialized && reelSessionTracker.currentActiveHash != null
 
     // Floating Counter Pill
     private var pillView: View? = null
@@ -54,8 +56,8 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         const val PACKAGE_INSTAGRAM_LITE = "com.instagram.lite"
         const val PACKAGE_YOUTUBE = "com.google.android.youtube"
 
-        // Habit Dwell Threshold (1.8 seconds)
-        const val DWELL_THRESHOLD_MS = 1800L
+        // Dwell Threshold (1.5 seconds)
+        const val DWELL_THRESHOLD_MS = ReelSessionTracker.DWELL_THRESHOLD_MS
 
         @Volatile
         var instance: VideoBlockerAccessibilityService? = null
@@ -74,6 +76,13 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             val service = instance ?: return false
             return service.performGlobalAction(GLOBAL_ACTION_BACK)
         }
+
+        /**
+         * Tree traversal helper to extract a unique composite fingerprint hash.
+         */
+        fun extractReelFingerprint(rootNode: AccessibilityNodeInfo): String? {
+            return ReelFingerprintExtractor.extractReelFingerprint(rootNode)
+        }
     }
 
     private fun isSupportedPackage(pkg: String): Boolean {
@@ -85,8 +94,20 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         instance = this
         quotaManager = QuotaManager(applicationContext)
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+
+        reelSessionTracker = ReelSessionTracker(
+            serviceScope = serviceScope,
+            quotaManager = quotaManager,
+            onCountUpdated = { _, _ ->
+                mainHandler.post { showOrUpdateCounterPill() }
+            },
+            onEjectionRequired = { platform ->
+                mainHandler.post { triggerIntervention(platform) }
+            }
+        )
+
         KontreForegroundService.start(this)
-        Log.i(TAG, "VideoBlockerAccessibilityService initialized.")
+        Log.i(TAG, "VideoBlockerAccessibilityService initialized with ReelSessionTracker.")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -140,8 +161,12 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 return
             }
 
-            if (!isShortFormCurrentlyActive) {
-                startDwellTimer(packageName)
+            // Extract composite unique fingerprint hash
+            val fingerprintHash = extractReelFingerprint(rootNode)
+            val platform = if (packageName == PACKAGE_YOUTUBE) "YouTube" else "Instagram"
+
+            if (fingerprintHash != null) {
+                reelSessionTracker.onReelNodeDetected(fingerprintHash, platform)
             }
         } else {
             // User is on Home screen/feed, chatting, or viewing stories:
@@ -152,79 +177,19 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Dwell Engine:
-     * Starts a 1.8-second Coroutine timer.
-     * RE-VERIFIES that the user is still actively on a short-form video when timer expires.
+     * Cancels any active dwell timer and resets active session hash.
      */
-    private fun startDwellTimer(targetPackage: String) {
-        cancelDwellTimer()
-        isShortFormCurrentlyActive = true
-        activeDwellPackage = targetPackage
-
-        dwellJob = serviceScope.launch {
-            delay(DWELL_THRESHOLD_MS)
-
-            // RE-VERIFY: Check active window state before performing any action!
-            val currentRoot = rootInActiveWindow
-            val currentPkg = currentRoot?.packageName?.toString()
-            if (currentRoot == null || currentPkg != targetPackage) {
-                Log.d(TAG, "Aborting dwell action: active window is null or switched to $currentPkg.")
-                cancelDwellTimer()
-                hideCounterPill()
-                return@launch
-            }
-
-            // Texting/typing check on dwell completion
-            if (isKeyboardVisible() || isUserActivelyTyping(currentRoot)) {
-                Log.d(TAG, "Aborting dwell action: user is texting/chatting.")
-                cancelDwellTimer()
-                hideCounterPill()
-                return@launch
-            }
-
-            if ((targetPackage == PACKAGE_INSTAGRAM || targetPackage == PACKAGE_INSTAGRAM_LITE) &&
-                (isInstagramTextingOrChatting(currentRoot) || isInstagramHomeFeed(currentRoot) || isInstagramStory(currentRoot))) {
-                Log.d(TAG, "Aborting dwell action: user is in DMs, on Home feed, or viewing Stories.")
-                cancelDwellTimer()
-                hideCounterPill()
-                return@launch
-            }
-
-            if (!detectShortFormVideo(currentRoot, targetPackage)) {
-                Log.d(TAG, "Aborting dwell action: user is no longer watching a short-form video.")
-                cancelDwellTimer()
-                hideCounterPill()
-                return@launch
-            }
-
-            onDwellThresholdReached(targetPackage)
+    fun cancelDwellTimer() {
+        if (::reelSessionTracker.isInitialized) {
+            reelSessionTracker.onUserNavigatedAway()
         }
     }
 
-    private fun cancelDwellTimer() {
-        if (dwellJob != null && dwellJob?.isActive == true) {
-            dwellJob?.cancel()
-        }
-        dwellJob = null
-        isShortFormCurrentlyActive = false
-        activeDwellPackage = null
-    }
-
-    private fun onDwellThresholdReached(targetPackage: String) {
-        val count = when (targetPackage) {
-            PACKAGE_INSTAGRAM, PACKAGE_INSTAGRAM_LITE -> quotaManager.incrementReels()
-            PACKAGE_YOUTUBE -> quotaManager.incrementShorts()
-            else -> quotaManager.totalCount
-        }
-        Log.i(TAG, "Short-form video dwell completed! Today's count: $count / ${quotaManager.dailyLimit}")
-
-        // Update top counter pill immediately
-        showOrUpdateCounterPill()
-
-        // Check if daily allowance is reached
-        if (quotaManager.isLimitReached || quotaManager.isStrictMode) {
-            triggerIntervention(targetPackage)
-        }
+    /**
+     * Tree traversal helper matching technical specification.
+     */
+    fun extractReelFingerprint(rootNode: AccessibilityNodeInfo): String? {
+        return ReelFingerprintExtractor.extractReelFingerprint(rootNode)
     }
 
     /**
@@ -964,6 +929,9 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        if (::reelSessionTracker.isInitialized) {
+            reelSessionTracker.clearSession()
+        }
         instance = null
         serviceScope.cancel()
         cancelDwellTimer()
