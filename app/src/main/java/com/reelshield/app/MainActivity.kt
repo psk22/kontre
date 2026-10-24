@@ -801,17 +801,14 @@ fun DashboardScreen(quotaManager: QuotaManager) {
         // Row 6: Reset All Counters
         OutlinedButton(
             onClick = {
-                val prefs = context.getSharedPreferences("kontre_prefs", Context.MODE_PRIVATE)
-                prefs.edit()
-                    .putInt("key_reels_count", 0)
-                    .putInt("key_shorts_count", 0)
-                    .putInt("key_blocked_count", 0)
-                    .apply()
+                quotaManager.resetAllCounters()
+                VideoBlockerAccessibilityService.instance?.reelSessionTracker?.clearSession()
+                VideoBlockerAccessibilityService.instance?.hideCounterPill()
                 reelsCount = 0
                 shortsCount = 0
                 blockedCount = 0
                 timeSaved = 0
-                Toast.makeText(context, "All counters reset to 0/50", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "All counters & active sessions reset to 0/50", Toast.LENGTH_SHORT).show()
             },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(100.dp),

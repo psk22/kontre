@@ -197,9 +197,32 @@ object ReelFingerprintExtractor {
             }
         }
 
-        // Validate that we found at least one identifier
+        // Robust fallback: if nothing extracted yet, scan for any visible non-button text in the container
         if (creatorHandle.isEmpty() && audioTrackName.isEmpty() && captionSnippet.isEmpty() && fallbackIdentifier.isEmpty()) {
-            return null
+            val visibleTokens = mutableListOf<String>()
+            val scanQueue = ArrayDeque<AccessibilityNodeInfo>().apply { add(rootNode) }
+            var scanned = 0
+            while (scanQueue.isNotEmpty() && scanned < 60) {
+                val node = scanQueue.removeFirst()
+                scanned++
+                val text = (node.text?.toString() ?: "").trim()
+                val desc = (node.contentDescription?.toString() ?: "").trim()
+                val candidate = if (text.isNotEmpty()) text else desc
+                if (candidate.length in 2..50 && !isCommonUiButton(candidate)) {
+                    visibleTokens.add(candidate)
+                    if (visibleTokens.size >= 2) break
+                }
+                for (i in 0 until node.childCount) {
+                    node.getChild(i)?.let { scanQueue.add(it) }
+                }
+            }
+            if (visibleTokens.isNotEmpty()) {
+                fallbackIdentifier = visibleTokens.joinToString("::")
+            } else {
+                val rect = android.graphics.Rect()
+                rootNode.getBoundsInScreen(rect)
+                fallbackIdentifier = "reel_${rect.left}_${rect.top}_${rect.right}_${rect.bottom}"
+            }
         }
 
         val platform = when {

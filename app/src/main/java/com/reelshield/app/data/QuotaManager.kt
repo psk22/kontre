@@ -88,6 +88,19 @@ class QuotaManager(context: Context) {
         }
     }
 
+    @Synchronized
+    fun resetAllCounters() {
+        prefs.edit()
+            .putInt(KEY_REELS_COUNT, 0)
+            .putInt(KEY_SHORTS_COUNT, 0)
+            .putInt(KEY_BLOCKED_COUNT, 0)
+            .putString(KEY_CONSUMED_HISTORY, "[]")
+            .apply()
+
+        _totalCountFlow.value = 0
+        _reelsCountFlow.value = 0
+    }
+
     // --- Settings Toggles ---
     var isInstagramBlockEnabled: Boolean
         get() = prefs.getBoolean(KEY_BLOCK_INSTAGRAM, true)

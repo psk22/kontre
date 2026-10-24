@@ -8,6 +8,7 @@ import android.graphics.Rect
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -119,7 +120,8 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 }
             },
             onEjectionRequired = { platform ->
-                mainHandler.post { triggerIntervention(platform) }
+                val targetPkg = if (platform.contains("YouTube", ignoreCase = true)) PACKAGE_YOUTUBE else PACKAGE_INSTAGRAM
+                mainHandler.post { triggerIntervention(targetPkg) }
             }
         )
 
@@ -139,9 +141,13 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
         // SAFEGUARD 2: Package & Toggle Filtering
         if (!isSupportedPackage(packageName)) {
-            cancelPendingHidePill()
-            cancelDwellTimer()
-            hideCounterPill()
+            // Background/system events (status bar clock tick, battery, notifications) shouldn't kill active reel session
+            val activePkg = rootInActiveWindow?.packageName?.toString() ?: ""
+            if (!isSupportedPackage(activePkg)) {
+                cancelPendingHidePill()
+                cancelDwellTimer()
+                hideCounterPill()
+            }
             return
         }
 
@@ -252,9 +258,15 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         val currentRoot = rootInActiveWindow ?: return
         val currentPkg = currentRoot.packageName?.toString() ?: ""
 
+        val resolvedPackage = when {
+            targetPackage.contains("youtube", ignoreCase = true) -> PACKAGE_YOUTUBE
+            targetPackage.contains("instagram", ignoreCase = true) -> PACKAGE_INSTAGRAM
+            else -> targetPackage
+        }
+
         // SAFEGUARD A: Strict Package Match
-        if (!isSupportedPackage(currentPkg) || !isSupportedPackage(targetPackage)) {
-            Log.d(TAG, "Intervention aborted: active window package is $currentPkg, expected $targetPackage")
+        if (!isSupportedPackage(currentPkg) || !isSupportedPackage(resolvedPackage)) {
+            Log.d(TAG, "Intervention aborted: active window package is $currentPkg, expected $resolvedPackage")
             cancelDwellTimer()
             hideCounterPill()
             return
@@ -290,7 +302,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         }
 
         // SAFEGUARD C: Re-evaluate full-screen short-form video presence
-        if (!detectShortFormVideo(currentRoot, targetPackage)) {
+        if (!detectShortFormVideo(currentRoot, resolvedPackage)) {
             Log.d(TAG, "Intervention aborted: user is not in short-form player.")
             cancelDwellTimer()
             hideCounterPill()
@@ -330,15 +342,23 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             val isLimitReached = quotaManager.isLimitReached
 
             if (isPillShowing && pillView != null) {
-                updatePillContent(pillView!!, total, limit, isTotalBlock, isLimitReached, isWatchingLastAllowed, previewState)
-                pillView?.requestLayout()
-                pillView?.invalidate()
-                try {
-                    pillLayoutParams?.let { lp -> windowManager.updateViewLayout(pillView, lp) }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to update pill view layout in WindowManager", e)
+                if (pillView?.isAttachedToWindow == true) {
+                    updatePillContent(pillView!!, total, limit, isTotalBlock, isLimitReached, isWatchingLastAllowed, previewState)
+                    pillView?.requestLayout()
+                    pillView?.invalidate()
+                    try {
+                        pillLayoutParams?.let { lp -> windowManager.updateViewLayout(pillView, lp) }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to update pill view layout in WindowManager", e)
+                    }
+                    return@post
+                } else {
+                    try {
+                        windowManager.removeViewImmediate(pillView)
+                    } catch (_: Exception) {}
+                    pillView = null
+                    isPillShowing = false
                 }
-                return@post
             }
 
             try {
@@ -347,17 +367,29 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 updatePillContent(view, total, limit, isTotalBlock, isLimitReached, isWatchingLastAllowed, previewState)
 
                 val density = resources.displayMetrics.density
-                val topMarginPx = (38 * density).toInt()
+                val topMarginPx = (65 * density).toInt()
 
-                val windowType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                    WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
-                else
+                val canDrawOverlay = Settings.canDrawOverlays(this)
+                val preferredWindowType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    if (canDrawOverlay) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                    else WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+                } else {
                     WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
+                }
+
+                val fallbackWindowType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    if (preferredWindowType == WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+                        WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+                    else
+                        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                } else {
+                    WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
+                }
 
                 val layoutParams = WindowManager.LayoutParams(
                     WindowManager.LayoutParams.WRAP_CONTENT,
                     WindowManager.LayoutParams.WRAP_CONTENT,
-                    windowType,
+                    preferredWindowType,
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                             WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
@@ -372,17 +404,19 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 try {
                     windowManager.addView(view, layoutParams)
                 } catch (e: Exception) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        layoutParams.type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                    Log.w(TAG, "Failed to add pill with preferred window type $preferredWindowType, trying fallback $fallbackWindowType", e)
+                    try {
+                        layoutParams.type = fallbackWindowType
                         windowManager.addView(view, layoutParams)
-                    } else {
-                        throw e
+                    } catch (e2: Exception) {
+                        Log.e(TAG, "Failed to add counter pill with both overlay types", e2)
+                        return@post
                     }
                 }
 
                 pillView = view
                 isPillShowing = true
-                Log.d(TAG, "Top reel counter pill attached.")
+                Log.d(TAG, "Top reel counter pill attached successfully.")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to attach counter pill", e)
             }
@@ -449,11 +483,13 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
     fun hideCounterPill() {
         mainHandler.post {
-            if (isPillShowing && pillView != null) {
+            if (pillView != null) {
                 try {
-                    windowManager.removeView(pillView)
+                    windowManager.removeViewImmediate(pillView)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error removing counter pill", e)
+                    try {
+                        windowManager.removeView(pillView)
+                    } catch (_: Exception) {}
                 } finally {
                     pillView = null
                     pillLayoutParams = null
@@ -567,31 +603,12 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 if (child.isSelected) {
                     val desc = (child.contentDescription?.toString() ?: "").lowercase()
                     val resId = (child.viewIdResourceName ?: "").lowercase()
-                    if (desc.contains("reel") || desc.contains("clip") || resId.contains("clips_tab")) {
+                    if (resId.contains("clips_tab") || desc == "reels" || desc.startsWith("reels,") || desc == "clips") {
                         return true
                     }
                 }
             }
         }
-
-        val queue = ArrayDeque<AccessibilityNodeInfo>().apply { add(root) }
-        var count = 0
-        while (queue.isNotEmpty() && count < 40) {
-            val node = queue.removeFirst()
-            count++
-            if (node.isSelected) {
-                val desc = (node.contentDescription?.toString() ?: "").lowercase()
-                val text = (node.text?.toString() ?: "").lowercase()
-                val resId = (node.viewIdResourceName ?: "").lowercase()
-                if (desc.contains("reel") || desc.contains("clip") || text.contains("reel") || text.contains("clip") || resId.contains("clips_tab")) {
-                    return true
-                }
-            }
-            for (i in 0 until node.childCount) {
-                node.getChild(i)?.let { queue.add(it) }
-            }
-        }
-
         return false
     }
 
@@ -611,31 +628,12 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 if (child.isSelected) {
                     val desc = (child.contentDescription?.toString() ?: "").lowercase()
                     val resId = (child.viewIdResourceName ?: "").lowercase()
-                    if (desc.contains("home") || desc.contains("feed") || resId.contains("feed_tab")) {
+                    if (resId.contains("feed_tab") || desc == "home" || desc.startsWith("home,") || desc == "feed") {
                         return true
                     }
                 }
             }
         }
-
-        val queue = ArrayDeque<AccessibilityNodeInfo>().apply { add(root) }
-        var count = 0
-        while (queue.isNotEmpty() && count < 40) {
-            val node = queue.removeFirst()
-            count++
-            if (node.isSelected) {
-                val desc = (node.contentDescription?.toString() ?: "").lowercase()
-                val text = (node.text?.toString() ?: "").lowercase()
-                val resId = (node.viewIdResourceName ?: "").lowercase()
-                if (desc == "home" || desc == "feed" || text == "home" || text == "feed" || resId.contains("feed_tab")) {
-                    return true
-                }
-            }
-            for (i in 0 until node.childCount) {
-                node.getChild(i)?.let { queue.add(it) }
-            }
-        }
-
         return false
     }
 
@@ -723,26 +721,25 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             return false
         }
 
+        // 1. Clips ViewPager (dedicated vertical swipe player for Reels - must be visible & >= 65% height)
         val clipsPager = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_viewer_view_pager")
-        if (!clipsPager.isNullOrEmpty()) {
+        if (!clipsPager.isNullOrEmpty() && clipsPager.any { isDedicatedFullscreenReel(it) }) {
             return true
         }
 
+        // 2. Clips Viewer Container (dedicated viewer - must be visible & >= 65% height)
         val viewerContainer = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_viewer_container")
-        if (!viewerContainer.isNullOrEmpty()) {
+        if (!viewerContainer.isNullOrEmpty() && viewerContainer.any { isDedicatedFullscreenReel(it) }) {
             return true
         }
 
+        // 3. Root Clips Layout (must be visible & >= 65% height)
         val rootClips = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/root_clips_layout")
-        if (!rootClips.isNullOrEmpty()) {
+        if (!rootClips.isNullOrEmpty() && rootClips.any { isDedicatedFullscreenReel(it) }) {
             return true
         }
 
-        val videoContainer = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_video_container")
-        if (!videoContainer.isNullOrEmpty()) {
-            return true
-        }
-
+        // 4. Dedicated Reels bottom tab selected in tab_bar
         if (isInstagramReelsTabSelected(root)) {
             return true
         }
@@ -753,8 +750,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
     /**
      * Complete immunity shield for Instagram Direct Messages (DMs), Chats, Inbox,
      * Message Threads, Primary/General filter tabs, Commenting, and Story/Note Replying.
-     * If the user taps a shared Reel inside a chat, it opens a dedicated fullscreen Reel viewer,
-     * in which case hasDedicatedFullscreenReel() will be true and immunity is released so the Reel is blocked.
+     * When user is in DMs, they are 100% immune unless a dedicated fullscreen Reel viewer is opened on top.
      */
     private fun isInstagramTextingOrChatting(root: AccessibilityNodeInfo): Boolean {
         // 1. If actively typing with keyboard or focused EditText, user is texting!
@@ -762,12 +758,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             return true
         }
 
-        // 2. If a dedicated fullscreen Reel viewer is open on top, user is watching a Reel (NOT chatting)!
-        if (hasDedicatedFullscreenReel(root)) {
-            return false
-        }
-
-        // 3. Direct Messages & Chat Known View IDs (standard Instagram)
+        // 2. Direct Messages & Chat Known View IDs (standard Instagram)
         val dmViewIds = listOf(
             "com.instagram.android:id/direct_message_list",
             "com.instagram.android:id/row_thread_composer",
@@ -799,11 +790,16 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         for (id in dmViewIds) {
             val nodes = root.findAccessibilityNodeInfosByViewId(id)
             if (!nodes.isNullOrEmpty() && nodes.any { it.isVisibleToUser }) {
+                // If a user tapped a shared Reel inside chat and launched dedicated fullscreen viewer on top:
+                val clipsPager = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_viewer_view_pager")
+                if (!clipsPager.isNullOrEmpty() && clipsPager.any { isDedicatedFullscreenReel(it) }) {
+                    return false
+                }
                 return true
             }
         }
 
-        // 4. Content description, text, and keyword matching across the tree
+        // 3. Content description, text, and keyword matching across the tree
         // Covers Instagram Lite and custom DM tabs (General, Primary, Requests, etc.)
         val queue = ArrayDeque<AccessibilityNodeInfo>().apply { add(root) }
         var visited = 0
@@ -852,11 +848,21 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
      */
     private fun isInstagramHomeFeed(root: AccessibilityNodeInfo): Boolean {
         // 1. If dedicated fullscreen Reel viewer is active, user is watching a Reel (NOT feed)
-        if (hasDedicatedFullscreenReel(root)) {
+        val clipsPager = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_viewer_view_pager")
+        if (!clipsPager.isNullOrEmpty() && clipsPager.any { isDedicatedFullscreenReel(it) }) {
+            return false
+        }
+        val viewerContainer = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_viewer_container")
+        if (!viewerContainer.isNullOrEmpty() && viewerContainer.any { isDedicatedFullscreenReel(it) }) {
             return false
         }
 
-        // 2. Check for Home feed list containers in standard Instagram
+        // 2. Check if the bottom Home / Feed tab is selected (covers both standard and Lite)
+        if (isInstagramHomeTabSelected(root)) {
+            return true
+        }
+
+        // 3. Check for Home feed list containers in standard Instagram
         val feedIds = listOf(
             "com.instagram.android:id/feed_recycler_view",
             "com.instagram.android:id/sticky_header_list",
@@ -868,11 +874,6 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             if (!nodes.isNullOrEmpty() && nodes.any { it.isVisibleToUser }) {
                 return true
             }
-        }
-
-        // 3. Check if the bottom Home / Feed tab is selected (covers both standard and Lite)
-        if (isInstagramHomeTabSelected(root)) {
-            return true
         }
 
         return false
@@ -970,17 +971,17 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             return false
         }
 
-        // --- SIGNATURE 1: Dedicated Fullscreen Clips ViewPager or Root Clips Layout ---
-        // Catches Reels opened by clicking on a Reel from Home feed, DMs, Explore, Profile, or links!
-        if (hasDedicatedFullscreenReel(root)) {
-            return true
-        }
-
         // --- SAFEGUARD 4: Home Feed Immunity ---
         // If the user is on the Home feed scrolling/viewing regular posts, DO NOT BLOCK!
         // Allows scrolling the feed freely without getting kicked out.
         if (isInstagramHomeFeed(root)) {
             return false
+        }
+
+        // --- SIGNATURE 1: Dedicated Fullscreen Clips ViewPager or Root Clips Layout ---
+        // Catches Reels opened by clicking on a Reel from Home feed, DMs, Explore, Profile, or links!
+        if (hasDedicatedFullscreenReel(root)) {
+            return true
         }
 
         // --- SIGNATURE 2: Generic / Lite Fullscreen Reel Player (when not on Home feed and not in DMs) ---
