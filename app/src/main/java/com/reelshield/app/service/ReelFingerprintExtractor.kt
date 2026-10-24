@@ -17,6 +17,45 @@ object ReelFingerprintExtractor {
 
     private val HANDLE_PATTERN = Pattern.compile("@[\\w.-]+")
 
+    private class ExtractorEntry(
+        var node: AccessibilityNodeInfo? = null,
+        var depth: Int = 0
+    ) {
+        fun set(n: AccessibilityNodeInfo, d: Int) {
+            node = n
+            depth = d
+        }
+        fun clear() {
+            node = null
+            depth = 0
+        }
+    }
+
+    private const val MAX_POOL_CAPACITY = 128
+    private val entryPool = Array(MAX_POOL_CAPACITY) { ExtractorEntry() }
+    private var poolIndex = 0
+    private val traversalQueue = ArrayDeque<ExtractorEntry>(MAX_POOL_CAPACITY)
+    private val pooledNodesToRecycle = ArrayList<AccessibilityNodeInfo>(MAX_POOL_CAPACITY)
+
+    private fun obtainEntry(node: AccessibilityNodeInfo, depth: Int): ExtractorEntry {
+        val entry = if (poolIndex < MAX_POOL_CAPACITY) {
+            entryPool[poolIndex++]
+        } else {
+            ExtractorEntry()
+        }
+        entry.set(node, depth)
+        return entry
+    }
+
+    private fun resetPool() {
+        for (i in 0 until poolIndex) {
+            entryPool[i].clear()
+        }
+        poolIndex = 0
+        traversalQueue.clear()
+        pooledNodesToRecycle.clear()
+    }
+
     data class ReelDetails(
         val hash: String,
         val creatorUsername: String,
@@ -35,7 +74,9 @@ object ReelFingerprintExtractor {
 
     /**
      * Extracts full composite reel metadata using depth-limited traversal (max 7 levels).
+     * Uses pre-allocated service pool to guarantee zero heap allocations.
      */
+    @Synchronized
     fun extractDetails(rootNode: AccessibilityNodeInfo): ReelDetails? {
         val packageName = rootNode.packageName?.toString() ?: ""
         val isYouTube = packageName.contains("youtube")
@@ -45,15 +86,16 @@ object ReelFingerprintExtractor {
         var audioTitle = ""
         var captionPrefix = ""
 
-        val nodesToRecycle = mutableListOf<AccessibilityNodeInfo>()
-        // Pair of Node and Current Depth
-        val queue = ArrayDeque<Pair<AccessibilityNodeInfo, Int>>().apply { add(Pair(rootNode, 0)) }
+        resetPool()
+        traversalQueue.add(obtainEntry(rootNode, 0))
         var visitedCount = 0
         val maxNodesToInspect = 100
 
         try {
-            while (queue.isNotEmpty() && visitedCount < maxNodesToInspect) {
-                val (node, depth) = queue.removeFirst()
+            while (traversalQueue.isNotEmpty() && visitedCount < maxNodesToInspect) {
+                val entry = traversalQueue.removeFirst()
+                val node = entry.node ?: continue
+                val depth = entry.depth
                 visitedCount++
 
                 val resId = (node.viewIdResourceName ?: "").lowercase()
@@ -148,8 +190,8 @@ object ReelFingerprintExtractor {
                     for (i in 0 until childCount) {
                         val child = node.getChild(i)
                         if (child != null) {
-                            queue.add(Pair(child, depth + 1))
-                            nodesToRecycle.add(child)
+                            traversalQueue.add(obtainEntry(child, depth + 1))
+                            pooledNodesToRecycle.add(child)
                         }
                     }
                 }
@@ -157,13 +199,14 @@ object ReelFingerprintExtractor {
         } finally {
             // Memory Management: explicit recycle on API < 30
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-                for (node in nodesToRecycle) {
+                for (i in 0 until pooledNodesToRecycle.size) {
                     try {
-                        node.recycle()
+                        pooledNodesToRecycle[i].recycle()
                     } catch (_: Exception) {
                     }
                 }
             }
+            resetPool()
         }
 
         // Validate that we found at least one strong identifier

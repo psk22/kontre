@@ -119,6 +119,8 @@ class DynamicRuleEngine private constructor(context: Context) {
         }
     }
 
+    private val defaultSurfaceRect = Rect()
+
     /**
      * Aspect Ratio & Video Surface Detection:
      * Checks if a node's class name matches SurfaceView, TextureView, PlayerView, or VideoView
@@ -126,11 +128,13 @@ class DynamicRuleEngine private constructor(context: Context) {
      *
      * Short-form immersive videos run inside a full-screen vertical container with an active
      * rendering surface whose height-to-width ratio is ~16/9 = 1.777.
+     * Supports passing reusableRect to achieve zero heap allocations on hot paths.
      */
     fun isVertical9by16VideoSurface(
         node: AccessibilityNodeInfo,
         screenWidth: Int,
-        screenHeight: Int
+        screenHeight: Int,
+        reusableRect: Rect? = null
     ): Boolean {
         if (!node.isVisibleToUser) return false
 
@@ -144,8 +148,8 @@ class DynamicRuleEngine private constructor(context: Context) {
 
         if (!isVideoSurfaceClass) return false
 
-        // 2. Measure bounds in screen coordinates
-        val rect = Rect()
+        // 2. Measure bounds in screen coordinates using pooled/reusable Rect
+        val rect = reusableRect ?: defaultSurfaceRect
         node.getBoundsInScreen(rect)
         if (rect.isEmpty || rect.width() <= 0 || rect.height() <= 0) return false
 
