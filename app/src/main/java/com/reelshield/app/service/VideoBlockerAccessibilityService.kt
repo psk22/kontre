@@ -338,17 +338,19 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 hideCounterPill()
                 return
             }
-            if (isInstagramHomeFeed(currentRoot)) {
-                Log.d(TAG, "Intervention aborted: user is browsing Instagram Home feed.")
-                cancelDwellTimer()
-                hideCounterPill()
-                return
-            }
-            if (isInstagramProfileOrExplore(currentRoot)) {
-                Log.d(TAG, "Intervention aborted: user is on Profile, Notifications, or Explore grid.")
-                cancelDwellTimer()
-                hideCounterPill()
-                return
+            if (!isDedicatedReelViewerActive(currentRoot)) {
+                if (isInstagramHomeFeed(currentRoot)) {
+                    Log.d(TAG, "Intervention aborted: user is browsing Instagram Home feed.")
+                    cancelDwellTimer()
+                    hideCounterPill()
+                    return
+                }
+                if (isInstagramProfileOrExplore(currentRoot)) {
+                    Log.d(TAG, "Intervention aborted: user is on Profile, Notifications, or Explore grid.")
+                    cancelDwellTimer()
+                    hideCounterPill()
+                    return
+                }
             }
         }
 
@@ -773,6 +775,11 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             return true
         }
 
+        // If user deliberately tapped a Reel from chat and dedicated Reel viewer opened:
+        if (isDedicatedReelViewerActive(root)) {
+            return false
+        }
+
         // 2. Direct Messages & Chat Known View IDs
         val dmViewIds = listOf(
             "com.instagram.android:id/direct_message_list",
@@ -802,11 +809,6 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         for (id in dmViewIds) {
             val nodes = root.findAccessibilityNodeInfosByViewId(id)
             if (!nodes.isNullOrEmpty()) {
-                // If user deliberately tapped a Reel from chat and it opened in dedicated fullscreen Clips ViewPager:
-                val clipsPager = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_viewer_view_pager")
-                if (!clipsPager.isNullOrEmpty() && clipsPager.any { it.isVisibleToUser && isDedicatedFullscreenReel(it) }) {
-                    return false
-                }
                 return true
             }
         }
@@ -850,11 +852,12 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
     /**
      * Complete immunity shield for the Instagram Home feed (scrolling/viewing posts).
      * In-feed video posts in the feed should NEVER trigger Reel blocking or ejection.
+     * BUT if the user TAPS into a Reel to open the fullscreen player, immunity is revoked!
      */
     private fun isInstagramHomeFeed(root: AccessibilityNodeInfo): Boolean {
-        // If a dedicated fullscreen Clips ViewPager is visibly covering the screen, user tapped into a Reel
-        val clipsPager = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_viewer_view_pager")
-        if (!clipsPager.isNullOrEmpty() && clipsPager.any { it.isVisibleToUser && isDedicatedFullscreenReel(it) }) {
+        // If a dedicated Reel viewer is actively open (e.g. user tapped on a Reel in Home feed),
+        // the user is NOT just scrolling the feed!
+        if (isDedicatedReelViewerActive(root)) {
             return false
         }
 
@@ -950,27 +953,66 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
     /**
      * Checks if a dedicated fullscreen Reel viewer is actively playing short-form video.
-     * Only matches when the dedicated Reels tab is selected or the fullscreen Clips ViewPager is active.
+     * Catches:
+     * 1. Reels opened from the dedicated Reels bottom tab (`isInstagramReelsTabSelected`),
+     * 2. Reels opened by TAPPING on a Reel from Home feed, DMs, Explore, or Profile!
      */
     private fun isDedicatedReelViewerActive(root: AccessibilityNodeInfo): Boolean {
+        // Stories are immune
+        if (isInstagramStory(root)) {
+            return false
+        }
+
         // Condition 1: Dedicated Reels bottom navigation tab is selected
         if (isInstagramReelsTabSelected(root)) {
             return true
         }
 
-        // Condition 2: Dedicated Clips ViewPager / Container is active and occupies full screen
-        val clipsPagerIds = listOf(
+        // Condition 2: Primary dedicated clips viewer containers & fragments
+        val clipsViewerIds = listOf(
             "com.instagram.android:id/clips_viewer_view_pager",
             "com.instagram.android:id/clips_viewer_container",
-            "com.instagram.android:id/root_clips_layout"
+            "com.instagram.android:id/root_clips_layout",
+            "com.instagram.android:id/clips_author_name"
         )
-        for (id in clipsPagerIds) {
+        for (id in clipsViewerIds) {
             val nodes = root.findAccessibilityNodeInfosByViewId(id)
             if (!nodes.isNullOrEmpty()) {
-                val activeNode = nodes.firstOrNull { it.isVisibleToUser && isDedicatedFullscreenReel(it) }
-                if (activeNode != null) {
-                    return true
-                }
+                return true
+            }
+        }
+
+        // Condition 3: Tapped Reel from Home Feed:
+        // When tapping a Reel card from Home feed, Instagram opens fullscreen viewer with Back button.
+        // (Home feed itself NEVER has a back button - it has Instagram logo and inbox button).
+        val backButtons = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/action_bar_button_back")
+        val hasBackButton = !backButtons.isNullOrEmpty() ||
+                !root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/back_button").isNullOrEmpty()
+
+        if (hasBackButton) {
+            val hasClipsContent = !root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_video_container").isNullOrEmpty() ||
+                    !root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_ufi_like_button").isNullOrEmpty() ||
+                    !root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_audio_mix_button").isNullOrEmpty()
+            if (hasClipsContent) {
+                return true
+            }
+        }
+
+        // Condition 4: Tree search for clips_viewer container or clips_author
+        val queue = ArrayDeque<AccessibilityNodeInfo>().apply { add(root) }
+        var visited = 0
+        while (queue.isNotEmpty() && visited < 50) {
+            val node = queue.removeFirst()
+            visited++
+
+            val resId = (node.viewIdResourceName ?: "").lowercase()
+            if (resId.contains("clips_viewer_view_pager") || resId.contains("clips_viewer_container") ||
+                resId.contains("root_clips_layout") || resId.contains("clips_author_name")) {
+                return true
+            }
+
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { queue.add(it) }
             }
         }
 
@@ -1052,7 +1094,13 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             return false
         }
 
-        // --- SAFEGUARD 4: Home Feed Immunity (Absolute Priority!) ---
+        // --- PRIORITY REEL CHECK: Dedicated Reel Viewer ---
+        // If user tapped a Reel from Home screen or is on the Reels tab, DETECT IT AND BLOCK!
+        if (isDedicatedReelViewerActive(root)) {
+            return true
+        }
+
+        // --- SAFEGUARD 4: Home Feed Immunity (Scrolling / Browsing only!) ---
         // If user is on the Home page, scrolling Home feed, viewing in-feed posts, NEVER BLOCK!
         if (isInstagramHomeFeed(root)) {
             return false
@@ -1063,8 +1111,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             return false
         }
 
-        // --- ONLY DETECT DEDICATED REEL VIEWER ---
-        return isDedicatedReelViewerActive(root)
+        return false
     }
 
     private fun detectYouTubeShorts(root: AccessibilityNodeInfo): Boolean {
