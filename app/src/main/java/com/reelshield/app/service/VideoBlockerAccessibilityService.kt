@@ -1,13 +1,17 @@
 package com.reelshield.app.service
 
 import android.accessibilityservice.AccessibilityService
+import android.content.ComponentName
 import android.content.Context
+import android.content.ServiceConnection
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.os.Build
 import android.os.Handler
+import android.os.IBinder
 import android.os.Looper
+import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -50,6 +54,20 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
     // Debounce to prevent repeated intervention bursts
     private var lastInterventionTimestamp = 0L
+
+    // Lifecycle monitoring binding with WatcherForegroundService
+    private var isWatcherBound = false
+    private val watcherConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            isWatcherBound = true
+            Log.d(TAG, "Bound to WatcherForegroundService successfully.")
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            isWatcherBound = false
+            Log.d(TAG, "Disconnected from WatcherForegroundService.")
+        }
+    }
 
     companion object {
         const val PACKAGE_INSTAGRAM = "com.instagram.android"
@@ -121,8 +139,16 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             }
         )
 
-        KontreForegroundService.start(this)
-        Log.i(TAG, "VideoBlockerAccessibilityService initialized with ReelSessionTracker.")
+        WatcherForegroundService.start(this)
+        isWatcherBound = WatcherForegroundService.bind(this, watcherConnection)
+        Log.i(TAG, "VideoBlockerAccessibilityService initialized with ReelSessionTracker and WatcherForegroundService.")
+    }
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        WatcherForegroundService.start(this)
+        isWatcherBound = WatcherForegroundService.bind(this, watcherConnection)
+        Log.i(TAG, "AccessibilityService connected and bound to WatcherForegroundService.")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -283,6 +309,10 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
         Log.i(TAG, "Limit reached / Total Block: auto-ejecting from Reel/Short via GLOBAL_ACTION_BACK.")
         performGlobalAction(GLOBAL_ACTION_BACK)
+
+        if (Settings.canDrawOverlays(this)) {
+            BlockingOverlayService.show(this, targetPackage)
+        }
     }
 
     /**
@@ -948,8 +978,8 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             return false
         }
 
-        // --- SIGNATURE 2: Generic / Lite Fullscreen Reel Player (when not on Home feed and not in DMs) ---
-        return isGenericFullscreenReel(root)
+        // --- SIGNATURE 2: Tiered Heuristic Detection (detectReelContainer) & Generic Fullscreen Reel Player ---
+        return detectReelContainer(root) || isGenericFullscreenReel(root)
     }
 
     private fun detectYouTubeShorts(root: AccessibilityNodeInfo): Boolean {
@@ -997,7 +1027,147 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             }
         }
 
+        // SIGNATURE 3: Tiered Heuristic Detection (detectReelContainer)
+        if (detectReelContainer(root)) return true
+
         return false
+    }
+
+    /**
+     * Tiered Evaluation Pipeline:
+     * Tier 1 — Fuzzy Resource ID Scanning: keywords reel, clip, shorts_player, reel_viewer.
+     * Tier 2 — Accessibility Label & Content Description Fallback: Labels "Reels", "Shorts", "Original Audio", "Sound", "Remix".
+     * Tier 3 — Structural & Geometry Layout Signature: ViewPager2 or vertical RecyclerView covering >= 90% screen height & width with right-edge vertical action rail children.
+     * Clean Memory Management: depth-limited search (up to 7 levels deep), explicit .recycle() on API < 30.
+     */
+    fun detectReelContainer(root: AccessibilityNodeInfo): Boolean {
+        val metrics = resources.displayMetrics
+        val screenWidth = if (metrics.widthPixels > 0) metrics.widthPixels else 1080
+        val screenHeight = if (metrics.heightPixels > 0) metrics.heightPixels else 2400
+
+        val nodesToRecycle = mutableListOf<AccessibilityNodeInfo>()
+        val queue = ArrayDeque<Pair<AccessibilityNodeInfo, Int>>().apply { add(Pair(root, 0)) }
+        var visited = 0
+        val maxVisited = 100
+
+        var hasTier1FuzzyId = false
+        var hasTier2Label = false
+        var hasTier3Layout = false
+
+        try {
+            while (queue.isNotEmpty() && visited < maxVisited) {
+                val (node, depth) = queue.removeFirst()
+                visited++
+
+                val resId = (node.viewIdResourceName ?: "").lowercase()
+                val text = (node.text?.toString() ?: "").lowercase()
+                val desc = (node.contentDescription?.toString() ?: "").lowercase()
+                val className = (node.className?.toString() ?: "")
+
+                // Tier 1 — Fuzzy Resource ID Scanning
+                if (!hasTier1FuzzyId) {
+                    if (resId.contains("reel") || resId.contains("clip") ||
+                        resId.contains("shorts_player") || resId.contains("reel_viewer")
+                    ) {
+                        hasTier1FuzzyId = true
+                    }
+                }
+
+                // Tier 2 — Accessibility Label & Content Description Fallback
+                if (!hasTier2Label) {
+                    if (text.contains("reels") || desc.contains("reels") ||
+                        text.contains("shorts") || desc.contains("shorts") ||
+                        text.contains("original audio") || desc.contains("original audio") ||
+                        text.contains("sound") || desc.contains("sound") ||
+                        text.contains("remix") || desc.contains("remix")
+                    ) {
+                        hasTier2Label = true
+                    }
+                }
+
+                // Tier 3 — Structural & Geometry Layout Signature
+                if (!hasTier3Layout) {
+                    val isSwipeContainer = className.contains("ViewPager2") ||
+                            className.contains("RecyclerView") ||
+                            resId.contains("view_pager") ||
+                            resId.contains("clips_viewer")
+
+                    if (isSwipeContainer && node.isVisibleToUser) {
+                        val rect = Rect()
+                        node.getBoundsInScreen(rect)
+                        val coversNinetyPercent = rect.width() >= (screenWidth * 0.90f) &&
+                                rect.height() >= (screenHeight * 0.90f)
+
+                        if (coversNinetyPercent && hasVerticalActionRailChildren(node, screenWidth)) {
+                            hasTier3Layout = true
+                        }
+                    }
+                }
+
+                // Early exit if Tier 3 confirmed or both Tier 1 and Tier 2 confirmed
+                if (hasTier3Layout || (hasTier1FuzzyId && hasTier2Label)) {
+                    return true
+                }
+
+                // Depth-limited search (up to 7 levels deep)
+                if (depth < 7) {
+                    for (i in 0 until node.childCount) {
+                        val child = node.getChild(i)
+                        if (child != null) {
+                            queue.add(Pair(child, depth + 1))
+                            nodesToRecycle.add(child)
+                        }
+                    }
+                }
+            }
+        } finally {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                for (node in nodesToRecycle) {
+                    try { node.recycle() } catch (_: Exception) {}
+                }
+            }
+        }
+
+        return hasTier3Layout || (hasTier1FuzzyId && hasTier2Label)
+    }
+
+    private fun hasVerticalActionRailChildren(container: AccessibilityNodeInfo, screenWidth: Int): Boolean {
+        val rightEdgeThreshold = (screenWidth * 0.70f).toInt()
+        var actionButtonCount = 0
+
+        val queue = ArrayDeque<AccessibilityNodeInfo>().apply { add(container) }
+        var visited = 0
+        while (queue.isNotEmpty() && visited < 40) {
+            val node = queue.removeFirst()
+            visited++
+
+            val rect = Rect()
+            node.getBoundsInScreen(rect)
+
+            // Child aligned near the right screen edge
+            if (rect.left >= rightEdgeThreshold || rect.right >= rightEdgeThreshold) {
+                val isButton = node.isClickable ||
+                        (node.className?.contains("Button", ignoreCase = true) == true) ||
+                        (node.className?.contains("ImageView", ignoreCase = true) == true)
+                val resId = (node.viewIdResourceName ?: "").lowercase()
+                val desc = (node.contentDescription?.toString() ?: "").lowercase()
+
+                if (isButton || resId.contains("action") || resId.contains("like") ||
+                    resId.contains("comment") || resId.contains("share") ||
+                    desc.contains("like") || desc.contains("comment") || desc.contains("share")
+                ) {
+                    actionButtonCount++
+                    if (actionButtonCount >= 2) {
+                        return true
+                    }
+                }
+            }
+
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { queue.add(it) }
+            }
+        }
+        return actionButtonCount >= 2
     }
 
     override fun onInterrupt() {
@@ -1008,6 +1178,10 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        if (isWatcherBound) {
+            WatcherForegroundService.unbind(this, watcherConnection)
+            isWatcherBound = false
+        }
         if (::reelSessionTracker.isInitialized) {
             reelSessionTracker.clearSession()
         }

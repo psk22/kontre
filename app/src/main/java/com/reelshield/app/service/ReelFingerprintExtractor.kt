@@ -2,20 +2,16 @@ package com.reelshield.app.service
 
 import android.os.Build
 import android.view.accessibility.AccessibilityNodeInfo
-import java.security.MessageDigest
 import java.util.ArrayDeque
 import java.util.regex.Pattern
 
 /**
- * Unique Reel & Short Fingerprint Extractor.
- *
- * Traverses the active AccessibilityNodeInfo tree to extract composite identifiers:
- * 1. Creator Handle (e.g. @username, channel_name, reel_viewer_title)
- * 2. Audio Track Name (e.g. "Original audio", music_title, sound_track)
- * 3. Caption Snippet (first 40 characters of the primary video description)
- *
- * Computes a SHA-256 fingerprint hash of "$creator|$audioTitle|$captionSnippet".
- * Intermediate AccessibilityNodeInfo instances are safely recycled on API < 30.
+ * Unique Reel & Short Fingerprint Extractor:
+ * Traverses the active AccessibilityNodeInfo tree up to 7 levels deep.
+ * Extracts composite metadata:
+ *   val rawKey = "${creatorUsername}|${audioTitle}|${captionPrefix.take(30)}"
+ *   val reelHash = rawKey.hashCode().toString()
+ * Intermediate node allocations are explicitly recycled on API < 30.
  */
 object ReelFingerprintExtractor {
 
@@ -23,14 +19,14 @@ object ReelFingerprintExtractor {
 
     data class ReelDetails(
         val hash: String,
-        val creator: String,
+        val creatorUsername: String,
         val audioTitle: String,
-        val captionSnippet: String,
+        val captionPrefix: String,
         val platform: String
     )
 
     /**
-     * Extracts a SHA-256 fingerprint hash for the active short-form video.
+     * Extracts a fast hash string for the active short-form video.
      * Returns null if no valid reel player nodes are detected.
      */
     fun extractReelFingerprint(rootNode: AccessibilityNodeInfo): String? {
@@ -38,26 +34,26 @@ object ReelFingerprintExtractor {
     }
 
     /**
-     * Extracts full composite reel metadata.
-     * Returns null if the view does not contain a valid short-form video player.
+     * Extracts full composite reel metadata using depth-limited traversal (max 7 levels).
      */
     fun extractDetails(rootNode: AccessibilityNodeInfo): ReelDetails? {
         val packageName = rootNode.packageName?.toString() ?: ""
         val isYouTube = packageName.contains("youtube")
         val isInstagram = packageName.contains("instagram")
 
-        var creatorHandle = ""
-        var audioTrackName = ""
-        var captionSnippet = ""
+        var creatorUsername = ""
+        var audioTitle = ""
+        var captionPrefix = ""
 
         val nodesToRecycle = mutableListOf<AccessibilityNodeInfo>()
-        val queue = ArrayDeque<AccessibilityNodeInfo>().apply { add(rootNode) }
+        // Pair of Node and Current Depth
+        val queue = ArrayDeque<Pair<AccessibilityNodeInfo, Int>>().apply { add(Pair(rootNode, 0)) }
         var visitedCount = 0
-        val maxNodesToInspect = 120
+        val maxNodesToInspect = 100
 
         try {
             while (queue.isNotEmpty() && visitedCount < maxNodesToInspect) {
-                val node = queue.removeFirst()
+                val (node, depth) = queue.removeFirst()
                 visitedCount++
 
                 val resId = (node.viewIdResourceName ?: "").lowercase()
@@ -67,9 +63,9 @@ object ReelFingerprintExtractor {
                 val lowerDesc = desc.lowercase()
 
                 // -------------------------------------------------------------
-                // 1. Creator Handle Extraction
+                // 1. Creator Username Extraction
                 // -------------------------------------------------------------
-                if (creatorHandle.isEmpty()) {
+                if (creatorUsername.isEmpty()) {
                     if (resId.contains("reel_viewer_title") ||
                         resId.contains("channel_name") ||
                         resId.contains("user_name") ||
@@ -77,31 +73,31 @@ object ReelFingerprintExtractor {
                         resId.contains("profile_name")
                     ) {
                         if (text.isNotEmpty()) {
-                            creatorHandle = cleanCreatorHandle(text)
+                            creatorUsername = cleanCreatorHandle(text)
                         } else if (desc.isNotEmpty()) {
-                            creatorHandle = cleanCreatorHandle(desc)
+                            creatorUsername = cleanCreatorHandle(desc)
                         }
                     }
 
-                    if (creatorHandle.isEmpty() && text.isNotEmpty()) {
+                    if (creatorUsername.isEmpty() && text.isNotEmpty()) {
                         val matcher = HANDLE_PATTERN.matcher(text)
                         if (matcher.find()) {
-                            creatorHandle = matcher.group()
+                            creatorUsername = matcher.group()
                         }
                     }
 
-                    if (creatorHandle.isEmpty() && desc.isNotEmpty()) {
+                    if (creatorUsername.isEmpty() && desc.isNotEmpty()) {
                         val matcher = HANDLE_PATTERN.matcher(desc)
                         if (matcher.find()) {
-                            creatorHandle = matcher.group()
+                            creatorUsername = matcher.group()
                         }
                     }
                 }
 
                 // -------------------------------------------------------------
-                // 2. Audio Track Name Extraction
+                // 2. Audio Title Extraction
                 // -------------------------------------------------------------
-                if (audioTrackName.isEmpty()) {
+                if (audioTitle.isEmpty()) {
                     val isAudioId = resId.contains("audio") ||
                             resId.contains("music") ||
                             resId.contains("sound") ||
@@ -119,15 +115,15 @@ object ReelFingerprintExtractor {
                     if (isAudioId || isAudioTextOrDesc) {
                         val candidate = if (text.isNotEmpty()) text else desc
                         if (candidate.isNotEmpty() && candidate.length > 2) {
-                            audioTrackName = cleanAudioTitle(candidate)
+                            audioTitle = cleanAudioTitle(candidate)
                         }
                     }
                 }
 
                 // -------------------------------------------------------------
-                // 3. Caption Snippet Extraction (First 40 characters)
+                // 3. Caption Prefix Extraction (first 30 characters)
                 // -------------------------------------------------------------
-                if (captionSnippet.isEmpty()) {
+                if (captionPrefix.isEmpty()) {
                     val isCaptionId = resId.contains("caption") ||
                             resId.contains("subtitle") ||
                             resId.contains("description") ||
@@ -135,25 +131,26 @@ object ReelFingerprintExtractor {
                             resId.contains("shorts_title")
 
                     if (isCaptionId && text.isNotEmpty()) {
-                        captionSnippet = text.take(40).trim()
-                    } else if (text.length >= 15 && text != creatorHandle && !lowerText.contains("audio") && !lowerText.contains("music")) {
-                        // Candidate descriptive text associated with video
-                        captionSnippet = text.take(40).trim()
+                        captionPrefix = text.take(30).trim()
+                    } else if (text.length >= 10 && text != creatorUsername && !lowerText.contains("audio") && !lowerText.contains("music")) {
+                        captionPrefix = text.take(30).trim()
                     }
                 }
 
-                // If all 3 components are found, we have a complete fingerprint
-                if (creatorHandle.isNotEmpty() && audioTrackName.isNotEmpty() && captionSnippet.isNotEmpty()) {
+                // Early exit if all components found
+                if (creatorUsername.isNotEmpty() && audioTitle.isNotEmpty() && captionPrefix.isNotEmpty()) {
                     break
                 }
 
-                // Enqueue children safely
-                val childCount = node.childCount
-                for (i in 0 until childCount) {
-                    val child = node.getChild(i)
-                    if (child != null) {
-                        queue.add(child)
-                        nodesToRecycle.add(child)
+                // Depth-limited search: traverse only up to 7 levels deep
+                if (depth < 7) {
+                    val childCount = node.childCount
+                    for (i in 0 until childCount) {
+                        val child = node.getChild(i)
+                        if (child != null) {
+                            queue.add(Pair(child, depth + 1))
+                            nodesToRecycle.add(child)
+                        }
                     }
                 }
             }
@@ -164,14 +161,13 @@ object ReelFingerprintExtractor {
                     try {
                         node.recycle()
                     } catch (_: Exception) {
-                        // Ignore already recycled nodes safely
                     }
                 }
             }
         }
 
-        // Validate that we found at least one strong unique identifier
-        if (creatorHandle.isEmpty() && audioTrackName.isEmpty() && captionSnippet.isEmpty()) {
+        // Validate that we found at least one strong identifier
+        if (creatorUsername.isEmpty() && audioTitle.isEmpty() && captionPrefix.isEmpty()) {
             return null
         }
 
@@ -181,15 +177,17 @@ object ReelFingerprintExtractor {
             else -> "Social"
         }
 
-        // Composite hash payload: "$creator|$audioTitle|$captionSnippet"
-        val payload = "$creatorHandle|$audioTrackName|$captionSnippet"
-        val hash = sha256(payload)
+        // Unique Signature Hashing:
+        // val rawKey = "${creatorUsername}|${audioTitle}|${captionPrefix.take(30)}"
+        // val reelHash = rawKey.hashCode().toString()
+        val rawKey = "${creatorUsername}|${audioTitle}|${captionPrefix.take(30)}"
+        val reelHash = rawKey.hashCode().toString()
 
         return ReelDetails(
-            hash = hash,
-            creator = creatorHandle,
-            audioTitle = audioTrackName,
-            captionSnippet = captionSnippet,
+            hash = reelHash,
+            creatorUsername = creatorUsername,
+            audioTitle = audioTitle,
+            captionPrefix = captionPrefix.take(30),
             platform = platform
         )
     }
@@ -210,11 +208,5 @@ object ReelFingerprintExtractor {
             .replace("Original sound", "original_sound")
             .trim()
             .take(50)
-    }
-
-    private fun sha256(input: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val bytes = digest.digest(input.toByteArray(Charsets.UTF_8))
-        return bytes.joinToString("") { "%02x".format(it) }
     }
 }

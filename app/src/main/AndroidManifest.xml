@@ -40,6 +40,15 @@
 
         <!-- Sticky Foreground Service for lifecycle stability & OOM protection -->
         <service
+            android:name=".service.WatcherForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Monitors short-form video usage to enforce daily digital wellbeing limits" />
+        </service>
+
+        <service
             android:name=".service.KontreForegroundService"
             android:exported="false"
             android:foregroundServiceType="specialUse">

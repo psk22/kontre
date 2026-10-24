@@ -6,4 +6,4 @@
     android:canRetrieveWindowContent="true"
     android:description="@string/accessibility_service_description"
     android:notificationTimeout="100"
-    android:packageNames="com.instagram.android,com.instagram.lite,com.google.android.youtube" />
+    android:packageNames="com.instagram.android,com.google.android.youtube" />

@@ -60,8 +60,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.reelshield.app.data.QuotaManager
-import com.reelshield.app.service.KontreForegroundService
+import com.reelshield.app.service.WatcherForegroundService
 import com.reelshield.app.service.VideoBlockerAccessibilityService
+import com.reelshield.app.util.BatteryOptimizationHelper
 import com.reelshield.app.ui.theme.AshText
 import com.reelshield.app.ui.theme.AubergineCanvas
 import com.reelshield.app.ui.theme.BorderColor
@@ -92,7 +93,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         quotaManager = QuotaManager(this)
-        KontreForegroundService.start(this)
+        WatcherForegroundService.start(this)
 
         setContent {
             KontreTheme {
@@ -134,6 +135,9 @@ fun DashboardScreen(quotaManager: QuotaManager) {
     var isRestrictedBlocked by remember {
         mutableStateOf(isRestrictedSettingsBlocked(context))
     }
+    var isBatteryOptIgnored by remember {
+        mutableStateOf(BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context))
+    }
 
     // Immediate reactive updates via StateFlow
     LaunchedEffect(Unit) {
@@ -156,6 +160,7 @@ fun DashboardScreen(quotaManager: QuotaManager) {
             isAccessibilityEnabled = isAccessibilityServiceActive(context)
             isOverlayGranted = Settings.canDrawOverlays(context)
             isRestrictedBlocked = isRestrictedSettingsBlocked(context)
+            isBatteryOptIgnored = BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)
             delay(1000L)
         }
     }
@@ -502,6 +507,39 @@ fun DashboardScreen(quotaManager: QuotaManager) {
                 context.startActivity(intent)
             }
         )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // 3. Battery Optimization Exemption Card
+        PermissionWizardCard(
+            stepNumber = "3",
+            title = "Battery Optimization Exemption",
+            description = "Prevents aggressive OEM task killers (One UI, HyperOS, ColorOS) from sleeping the focus monitor.",
+            isGranted = isBatteryOptIgnored,
+            actionLabel = "Request Exemption",
+            onAction = {
+                BatteryOptimizationHelper.requestIgnoreBatteryOptimizations(context)
+            }
+        )
+
+        if (!isBatteryOptIgnored) {
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = {
+                    BatteryOptimizationHelper.openOemBackgroundSettings(context)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(100.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = FogText),
+                border = ButtonDefaults.outlinedButtonBorder.copy(brush = SolidColor(WhisperBorder))
+            ) {
+                Text(
+                    text = "⚙️ Open OEM Background / Auto-Start Settings",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
 
         Spacer(modifier = Modifier.height(28.dp))
 
