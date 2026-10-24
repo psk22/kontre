@@ -98,8 +98,8 @@ class QuotaManager(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_BLOCK_YOUTUBE, value).apply()
 
     var isStrictMode: Boolean
-        get() = true
-        set(_) {}
+        get() = prefs.getBoolean(KEY_STRICT_MODE, false)
+        set(value) = prefs.edit().putBoolean(KEY_STRICT_MODE, value).apply()
 
     var isTotalBlockEnabled: Boolean
         get() = prefs.getBoolean(KEY_TOTAL_BLOCK, false)

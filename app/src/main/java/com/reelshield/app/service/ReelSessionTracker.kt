@@ -10,23 +10,25 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.util.Collections
 import java.util.LinkedHashSet
 
 /**
  * Thread-safe Reel and Short Session Deduplication & Dwell Tracker.
  *
- * Enforces:
- * - 1500ms dwell threshold before a video is marked as watched.
- * - LRU cache (capacity: 50) of consumed video hashes to prevent double-counting
- *   when users swipe up and down across recently viewed reels.
- * - Cancellation on scroll away, app switch, or navigation away.
- * - Persistence & ejection callback when daily quota is reached.
+ * Rules:
+ * - When Total Block Mode is OFF, user has a 50 reels/shorts daily allowance.
+ * - Live counter updates as videos are watched.
+ * - When user hits the 50th video (quota reached):
+ *     1. A warning is delivered to the user (pill warning & toast alert).
+ *     2. User is allowed to finish watching that 50th video.
+ * - From NEXT TIME (user swipes to the next video or re-opens reels):
+ *     User is immediately blocked and auto-ejected.
  */
 class ReelSessionTracker(
     private val serviceScope: CoroutineScope,
     private val quotaManager: QuotaManager,
     private val onCountUpdated: (newCount: Int, platform: String) -> Unit,
+    private val onLimitReachedWarning: (platform: String) -> Unit,
     private val onEjectionRequired: (platform: String) -> Unit
 ) {
 
@@ -41,6 +43,15 @@ class ReelSessionTracker(
 
     @Volatile
     var currentActiveHash: String? = null
+        private set
+
+    /**
+     * Stores the hash of the 50th video that was allowed to finish with a warning.
+     * While the user stays on this video, they are not ejected.
+     * As soon as they scroll to the NEXT video, they are blocked.
+     */
+    @Volatile
+    var lastAllowedHash: String? = null
         private set
 
     // Thread-safe LRU set of recently counted hashes with capacity 50
@@ -66,16 +77,37 @@ class ReelSessionTracker(
 
     /**
      * Called whenever a candidate reel fingerprint is extracted from the active window.
-     * Manages deduplication and initiates the 1500ms dwell countdown.
+     * Manages deduplication, allowance checks, and initiates the 1500ms dwell countdown.
      */
     fun onReelNodeDetected(fingerprintHash: String, platform: String) {
         synchronized(lock) {
-            // 1. Same video already actively playing & dwelling: ignore UI spam
+            // Case 1: Total Block Mode (0 allowance) - Block instantly
+            if (quotaManager.isTotalBlockEnabled) {
+                Log.w(TAG, "Total Block Mode active. Ejecting immediately!")
+                onEjectionRequired(platform)
+                return
+            }
+
+            // Case 2: Daily quota already reached (50/50 or higher)
+            if (quotaManager.isLimitReached) {
+                // If user is still watching the 50th video that was granted warning, allow them to finish it
+                if (lastAllowedHash != null && fingerprintHash == lastAllowedHash) {
+                    currentActiveHash = fingerprintHash
+                    return
+                }
+
+                // NEXT TIME: User swiped to a new video after hitting 50! BLOCK!
+                Log.w(TAG, "Daily quota reached (${quotaManager.totalCount}/${quotaManager.dailyLimit}). Next video blocked! Ejecting!")
+                onEjectionRequired(platform)
+                return
+            }
+
+            // Case 3: Same video already actively playing & dwelling: ignore UI spam
             if (fingerprintHash == currentActiveHash) {
                 return
             }
 
-            // 2. Previously consumed video (user swiped back to an already counted reel)
+            // Case 4: Previously consumed video in LRU cache (user swiped back up/down)
             if (consumedHashes.contains(fingerprintHash)) {
                 Log.d(TAG, "Reel already consumed in LRU cache ($fingerprintHash). Updating active hash without dwell.")
                 currentActiveHash = fingerprintHash
@@ -83,7 +115,7 @@ class ReelSessionTracker(
                 return
             }
 
-            // 3. Genuinely new video: cancel previous dwell and start fresh 1500ms timer
+            // Case 5: Genuinely new video: cancel previous dwell and start fresh 1500ms timer
             Log.d(TAG, "New reel detected ($fingerprintHash) on $platform. Starting 1500ms dwell countdown.")
             cancelDwellTimerLocked()
             currentActiveHash = fingerprintHash
@@ -110,6 +142,7 @@ class ReelSessionTracker(
                 Log.d(TAG, "User navigated away from reel. Cancelling dwell job.")
                 cancelDwellTimerLocked()
                 currentActiveHash = null
+                lastAllowedHash = null
             }
         }
     }
@@ -117,9 +150,13 @@ class ReelSessionTracker(
     /**
      * Marks a reel as consumed:
      * 1. Adds hash to LRU cache.
-     * 2. Persists metadata (timestamp, platform, hash) in repository.
+     * 2. Persists metadata in repository.
      * 3. Emits updated count to StateFlow.
-     * 4. Evaluates daily quota and triggers ejection hook if limit is reached.
+     * 4. If exactly reaching limit (50/50):
+     *      - Give a warning to the user!
+     *      - Allow them to finish this video (lastAllowedHash = hash).
+     * 5. If limit was already exceeded:
+     *      - Eject immediately.
      */
     private fun markReelAsConsumedLocked(hash: String, platform: String) {
         consumedHashes.add(hash)
@@ -136,10 +173,28 @@ class ReelSessionTracker(
 
         onCountUpdated(newCount, platform)
 
-        // Ejection Hook: Check against configured user limits
-        if (quotaManager.isLimitReached || quotaManager.isStrictMode) {
-            Log.w(TAG, "Daily allowance reached ($newCount). Triggering ejection hook!")
-            onEjectionRequired(platform)
+        val limit = quotaManager.dailyLimit
+
+        when {
+            // Case A: Total Block Mode - Immediate Ejection
+            quotaManager.isTotalBlockEnabled -> {
+                Log.w(TAG, "Total Block Mode active. Ejecting!")
+                onEjectionRequired(platform)
+            }
+
+            // Case B: Exactly hit daily limit on this video (e.g. 50/50)!
+            // GIVE A WARNING! Do NOT block yet; allow finishing this 50th video.
+            limit in 1..newCount && newCount == limit -> {
+                Log.w(TAG, "Daily quota of $limit reached on video $hash. Giving warning. Next video will be blocked!")
+                lastAllowedHash = hash
+                onLimitReachedWarning(platform)
+            }
+
+            // Case C: Exceeded limit (51+)
+            limit in 1..<newCount -> {
+                Log.w(TAG, "Daily quota exceeded ($newCount > $limit). Ejecting!")
+                onEjectionRequired(platform)
+            }
         }
     }
 
@@ -158,6 +213,7 @@ class ReelSessionTracker(
         synchronized(lock) {
             cancelDwellTimerLocked()
             currentActiveHash = null
+            lastAllowedHash = null
             consumedHashes.clear()
         }
     }

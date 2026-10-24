@@ -101,6 +101,21 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             onCountUpdated = { _, _ ->
                 mainHandler.post { showOrUpdateCounterPill() }
             },
+            onLimitReachedWarning = { platform ->
+                mainHandler.post {
+                    showOrUpdateCounterPill()
+                    try {
+                        val limit = quotaManager.dailyLimit
+                        android.widget.Toast.makeText(
+                            applicationContext,
+                            "⚠️ Daily quota reached ($limit/$limit)!\nThis is your last video. Next reel will be blocked.",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to show limit warning toast", e)
+                    }
+                }
+            },
             onEjectionRequired = { platform ->
                 mainHandler.post { triggerIntervention(platform) }
             }
@@ -155,8 +170,15 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             // User is watching a Reel / Short: Show the live top counter pill!
             showOrUpdateCounterPill()
 
-            if (quotaManager.isLimitReached || quotaManager.isStrictMode) {
-                // Limit reached (50/50, Total Block, or Strict Mode): Eject without delay
+            // Total Block Mode: 0 allowance allowed, eject immediately
+            if (quotaManager.isTotalBlockEnabled) {
+                triggerIntervention(packageName)
+                return
+            }
+
+            // Quota already exhausted and user is NOT on the granted last-video session:
+            // (e.g. user re-opened Reels later after finishing 50/50)
+            if (quotaManager.isLimitReached && reelSessionTracker.lastAllowedHash == null) {
                 triggerIntervention(packageName)
                 return
             }
@@ -167,6 +189,11 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
             if (fingerprintHash != null) {
                 reelSessionTracker.onReelNodeDetected(fingerprintHash, platform)
+            } else {
+                // If fingerprint could not be extracted and quota was reached without active last session, eject
+                if (quotaManager.isLimitReached && reelSessionTracker.lastAllowedHash == null) {
+                    triggerIntervention(packageName)
+                }
             }
         } else {
             // User is on Home screen/feed, chatting, or viewing stories:
@@ -261,40 +288,44 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
     /**
      * Floating Reel Counter Pill at the Top:
      * Displays a minimal, non-intrusive HUD at the top center of the screen
-     * indicating [ 🛡️ X / 50 ] while watching short-form videos.
+     * indicating [ 🛡️ X / 50 (Y left) ] while watching short-form videos.
      * Supports previewState: 0 (Normal), 1 (Warning), 2 (Locked), or -1 (Live).
      */
     fun showOrUpdateCounterPill(previewState: Int = -1) {
         mainHandler.post {
             val total = when (previewState) {
                 0 -> 12
-                1 -> 45
+                1 -> 50
                 2 -> 50
                 else -> quotaManager.totalCount
             }
             val limit = quotaManager.dailyLimit
-            val isLocked = previewState == 2 || (previewState == -1 && quotaManager.isLimitReached)
+            val isTotalBlock = quotaManager.isTotalBlockEnabled
+            val isWatchingLastAllowed = ::reelSessionTracker.isInitialized && reelSessionTracker.lastAllowedHash != null
+            val isLimitReached = quotaManager.isLimitReached
 
             if (isPillShowing && pillView != null) {
-                updatePillContent(pillView!!, total, limit, isLocked)
+                updatePillContent(pillView!!, total, limit, isTotalBlock, isLimitReached, isWatchingLastAllowed, previewState)
                 return@post
             }
 
             try {
                 val inflater = LayoutInflater.from(this)
                 val view = inflater.inflate(R.layout.layout_floating_reel_counter, null)
-                updatePillContent(view, total, limit, isLocked)
+                updatePillContent(view, total, limit, isTotalBlock, isLimitReached, isWatchingLastAllowed, previewState)
 
                 val density = resources.displayMetrics.density
                 val topMarginPx = (38 * density).toInt()
 
+                val windowType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                    WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+                else
+                    WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
+
                 val layoutParams = WindowManager.LayoutParams(
                     WindowManager.LayoutParams.WRAP_CONTENT,
                     WindowManager.LayoutParams.WRAP_CONTENT,
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                        WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
-                    else
-                        WindowManager.LayoutParams.TYPE_SYSTEM_ALERT,
+                    windowType,
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                             WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
@@ -304,7 +335,17 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                     y = topMarginPx
                 }
 
-                windowManager.addView(view, layoutParams)
+                try {
+                    windowManager.addView(view, layoutParams)
+                } catch (e: Exception) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        layoutParams.type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                        windowManager.addView(view, layoutParams)
+                    } else {
+                        throw e
+                    }
+                }
+
                 pillView = view
                 isPillShowing = true
                 Log.d(TAG, "Top reel counter pill attached.")
@@ -314,23 +355,61 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun updatePillContent(view: View, total: Int, limit: Int, isLocked: Boolean) {
+    private fun updatePillContent(
+        view: View,
+        total: Int,
+        limit: Int,
+        isTotalBlock: Boolean,
+        isLimitReached: Boolean,
+        isWatchingLastAllowed: Boolean,
+        previewState: Int
+    ) {
         val pillRoot = view.findViewById<LinearLayout>(R.id.pill_root)
         val tvIcon = view.findViewById<TextView>(R.id.tv_pill_icon)
         val tvCounter = view.findViewById<TextView>(R.id.tv_pill_counter)
 
-        if (isLocked) {
-            pillRoot.setBackgroundResource(R.drawable.bg_floating_pill_locked)
-            tvIcon.text = "🔒"
-            tvCounter.text = "$total / $limit LOCKED"
-            tvCounter.setTextColor(Color.parseColor("#FFFF4444"))
-        } else {
-            pillRoot.setBackgroundResource(R.drawable.bg_floating_pill)
-            tvIcon.text = if (total >= 40) "⚠️" else "🛡️"
-            tvCounter.text = "$total / $limit"
-            tvCounter.setTextColor(
-                if (total >= 40) Color.parseColor("#FFFFD60A") else Color.WHITE
-            )
+        val remaining = if (isTotalBlock) 0 else maxOf(0, limit - total)
+
+        when {
+            // Case 1: Total Block Mode (0 allowance, locked)
+            isTotalBlock -> {
+                pillRoot.setBackgroundResource(R.drawable.bg_floating_pill_locked)
+                tvIcon.text = "🔒"
+                tvCounter.text = "TOTAL BLOCK • LOCKED"
+                tvCounter.setTextColor(Color.parseColor("#FFFF4A36"))
+            }
+
+            // Case 2: Locked / Exceeded limit / Blocked on next video
+            previewState == 2 || (isLimitReached && !isWatchingLastAllowed) || (limit in 1..<total) -> {
+                pillRoot.setBackgroundResource(R.drawable.bg_floating_pill_locked)
+                tvIcon.text = "🔒"
+                tvCounter.text = "$total / $limit • LOCKED"
+                tvCounter.setTextColor(Color.parseColor("#FFFF4A36"))
+            }
+
+            // Case 3: Exactly Hit 50 (Warning on the 50th video, allowed to finish)
+            previewState == 1 || (total == limit && isWatchingLastAllowed) -> {
+                pillRoot.setBackgroundResource(R.drawable.bg_floating_pill_warning)
+                tvIcon.text = "⚠️"
+                tvCounter.text = "$total / $limit • LAST VIDEO"
+                tvCounter.setTextColor(Color.parseColor("#FFFFB020"))
+            }
+
+            // Case 4: Approaching limit warning zone (e.g. 40 to 49)
+            total >= 40 && limit > 0 -> {
+                pillRoot.setBackgroundResource(R.drawable.bg_floating_pill_warning)
+                tvIcon.text = "⚠️"
+                tvCounter.text = "$total / $limit ($remaining left)"
+                tvCounter.setTextColor(Color.parseColor("#FFFFB020"))
+            }
+
+            // Case 5: Normal allowance active (0 to 39)
+            else -> {
+                pillRoot.setBackgroundResource(R.drawable.bg_floating_pill)
+                tvIcon.text = "🛡️"
+                tvCounter.text = "$total / $limit ($remaining left)"
+                tvCounter.setTextColor(Color.WHITE)
+            }
         }
     }
 
@@ -419,9 +498,9 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
     /**
      * Checks if a node represents a true full-screen vertical immersive Reel player.
-     * Requires at least 75% of screen height and 85% of screen width.
+     * Requires at least 65% of screen height and 70% of screen width.
      * In-feed video posts (sharing the screen with top header, post author,
-     * action buttons, caption, and bottom navigation bar) NEVER exceed 55-60% height.
+     * action buttons, caption, and bottom navigation bar) NEVER exceed 50-55% height.
      */
     private fun isDedicatedFullscreenReel(node: AccessibilityNodeInfo): Boolean {
         if (!node.isVisibleToUser) return false
@@ -433,8 +512,8 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         val screenHeight = if (metrics.heightPixels > 0) metrics.heightPixels else 2000
         val screenWidth = if (metrics.widthPixels > 0) metrics.widthPixels else 1000
 
-        val minHeight = (screenHeight * 0.75f).toInt()
-        val minWidth = (screenWidth * 0.85f).toInt()
+        val minHeight = (screenHeight * 0.65f).toInt()
+        val minWidth = (screenWidth * 0.70f).toInt()
         return rect.height() >= minHeight && rect.width() >= minWidth
     }
 

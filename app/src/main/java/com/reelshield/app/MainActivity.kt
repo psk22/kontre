@@ -743,7 +743,7 @@ fun DashboardScreen(quotaManager: QuotaManager) {
             Button(
                 onClick = {
                     VideoBlockerAccessibilityService.previewFloatingPill(previewState = 0)
-                    Toast.makeText(context, "Showing normal counter pill [12/50] at top for 4s", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Showing normal counter pill [12 / 50 (38 left)] at top for 4s", Toast.LENGTH_SHORT).show()
                 },
                 modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.buttonColors(containerColor = ElevatedPlumDark),
@@ -755,7 +755,7 @@ fun DashboardScreen(quotaManager: QuotaManager) {
             Button(
                 onClick = {
                     VideoBlockerAccessibilityService.previewFloatingPill(previewState = 1)
-                    Toast.makeText(context, "Showing warn counter pill [42/50] at top for 4s", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Showing warn pill [50 / 50 • LAST VIDEO] at top for 4s", Toast.LENGTH_SHORT).show()
                 },
                 modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.buttonColors(containerColor = ElevatedPlumDark),
@@ -767,7 +767,7 @@ fun DashboardScreen(quotaManager: QuotaManager) {
             Button(
                 onClick = {
                     VideoBlockerAccessibilityService.previewFloatingPill(previewState = 2)
-                    Toast.makeText(context, "Showing locked pill [50/50 LOCKED] at top for 4s", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Showing locked pill [50 / 50 • LOCKED] at top for 4s", Toast.LENGTH_SHORT).show()
                 },
                 modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.buttonColors(containerColor = CoralEmber),
