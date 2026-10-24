@@ -47,6 +47,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,6 +61,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.reelshield.app.data.QuotaManager
+import com.reelshield.app.data.rules.DynamicRuleEngine
 import com.reelshield.app.service.WatcherForegroundService
 import com.reelshield.app.service.VideoBlockerAccessibilityService
 import com.reelshield.app.util.BatteryOptimizationHelper
@@ -85,6 +87,7 @@ import com.reelshield.app.ui.theme.TextPrimary
 import com.reelshield.app.ui.theme.TextSecondary
 import com.reelshield.app.ui.theme.WhisperBorder
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -138,6 +141,11 @@ fun DashboardScreen(quotaManager: QuotaManager) {
     var isBatteryOptIgnored by remember {
         mutableStateOf(BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context))
     }
+
+    val coroutineScope = rememberCoroutineScope()
+    val dynamicRuleEngine = remember { DynamicRuleEngine.getInstance(context) }
+    var activeRulesVersion by remember { mutableIntStateOf(dynamicRuleEngine.activeRules.version) }
+    var isSyncingRules by remember { mutableStateOf(false) }
 
     // Immediate reactive updates via StateFlow
     LaunchedEffect(Unit) {
@@ -652,7 +660,118 @@ fun DashboardScreen(quotaManager: QuotaManager) {
 
         Spacer(modifier = Modifier.height(28.dp))
 
-        // --- 7. Testing & Simulation Controls (Rich Lab) ---
+        // --- 7. Dynamic Anti-Obfuscation Rule Engine ---
+        Text(
+            text = "DYNAMIC ANTI-OBFUSCATION ENGINE",
+            color = AshText,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = ElevatedPlum),
+            border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(WhisperBorder))
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Dynamic Heuristic Rules v$activeRulesVersion",
+                            color = PureWhite,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "AES-256 Encrypted Cache • Remote Sync",
+                            color = FogText,
+                            fontSize = 12.sp
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .background(StatusGreenMuted, RoundedCornerShape(100.dp))
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "ACTIVE",
+                            color = StatusGreen,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = "📺", fontSize = 16.sp)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = "9:16 Video Surface Detection",
+                            color = PureWhite,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "SurfaceView, TextureView & PlayerView at 1.77 ± 0.1 ratio",
+                            color = AshText,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(
+                    onClick = {
+                        if (!isSyncingRules) {
+                            isSyncingRules = true
+                            coroutineScope.launch {
+                                val result = dynamicRuleEngine.fetchRemoteRules()
+                                isSyncingRules = false
+                                if (result.isSuccess) {
+                                    val rules = result.getOrNull()
+                                    if (rules != null) {
+                                        activeRulesVersion = rules.version
+                                    }
+                                    Toast.makeText(context, "✅ Dynamic rules updated (v$activeRulesVersion)", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "ℹ️ Active encrypted rules loaded (offline)", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(100.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ElevatedPlumDark),
+                    enabled = !isSyncingRules
+                ) {
+                    Text(
+                        text = if (isSyncingRules) "⏳ Syncing Rules over HTTPS..." else "🔄 Sync Latest Rules (HTTPS)",
+                        color = PureWhite,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(28.dp))
+
+        // --- 8. Testing & Simulation Controls (Rich Lab) ---
         Text(
             text = "TESTING & SIMULATION LAB",
             color = AshText,

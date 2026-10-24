@@ -24,6 +24,8 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.reelshield.app.R
 import com.reelshield.app.data.QuotaManager
+import com.reelshield.app.data.rules.AppHeuristicRule
+import com.reelshield.app.data.rules.DynamicRuleEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -43,6 +45,10 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
     // Reel Session & Deduplication Tracker
     lateinit var reelSessionTracker: ReelSessionTracker
+        private set
+
+    // Dynamic Heuristic Rule Engine
+    lateinit var dynamicRuleEngine: DynamicRuleEngine
         private set
 
     val isShortFormCurrentlyActive: Boolean
@@ -141,7 +147,12 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
         WatcherForegroundService.start(this)
         isWatcherBound = WatcherForegroundService.bind(this, watcherConnection)
-        Log.i(TAG, "VideoBlockerAccessibilityService initialized with ReelSessionTracker and WatcherForegroundService.")
+
+        // Initialize Dynamic Rule Engine & trigger background remote sync
+        dynamicRuleEngine = DynamicRuleEngine.getInstance(applicationContext)
+        dynamicRuleEngine.triggerBackgroundSync()
+
+        Log.i(TAG, "VideoBlockerAccessibilityService initialized with ReelSessionTracker, WatcherForegroundService, and DynamicRuleEngine.")
     }
 
     override fun onServiceConnected() {
@@ -1034,10 +1045,11 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Tiered Evaluation Pipeline:
-     * Tier 1 — Fuzzy Resource ID Scanning: keywords reel, clip, shorts_player, reel_viewer.
-     * Tier 2 — Accessibility Label & Content Description Fallback: Labels "Reels", "Shorts", "Original Audio", "Sound", "Remix".
-     * Tier 3 — Structural & Geometry Layout Signature: ViewPager2 or vertical RecyclerView covering >= 90% screen height & width with right-edge vertical action rail children.
+     * Tiered Evaluation Pipeline powered by Dynamic Heuristic Rule Engine:
+     * - Tier 1 — Fuzzy Resource ID Scanning: Dynamic regex & wildcard scanning from active remote/cached rules.
+     * - Tier 2 — Label & Content Description Fallback: Dynamic keyword matching from active rules.
+     * - Tier 3 — Structural & Geometry Layout Signature: Full-screen vertical swipe containers (ViewPager2/RecyclerView) >= 90% bounds with right-edge vertical action rail.
+     * - Tier 4 — Aspect Ratio & Video Surface Detection: Detects SurfaceView, TextureView, or PlayerView occupying vertical 9:16 aspect ratios (1.77 ± 0.1) to confirm active video playback rather than static graphic carousels.
      * Clean Memory Management: depth-limited search (up to 7 levels deep), explicit .recycle() on API < 30.
      */
     fun detectReelContainer(root: AccessibilityNodeInfo): Boolean {
@@ -1045,14 +1057,22 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         val screenWidth = if (metrics.widthPixels > 0) metrics.widthPixels else 1080
         val screenHeight = if (metrics.heightPixels > 0) metrics.heightPixels else 2400
 
+        val rootPkg = root.packageName?.toString() ?: ""
+        val isInstagram = rootPkg.contains("instagram")
+        val engine = if (::dynamicRuleEngine.isInitialized) dynamicRuleEngine else DynamicRuleEngine.getInstance(applicationContext)
+        val activeRules = engine.activeRules
+        val appRule = if (isInstagram) activeRules.instagramRules else activeRules.youtubeRules
+        val globalRule = activeRules.globalRules
+
         val nodesToRecycle = mutableListOf<AccessibilityNodeInfo>()
         val queue = ArrayDeque<Pair<AccessibilityNodeInfo, Int>>().apply { add(Pair(root, 0)) }
         var visited = 0
-        val maxVisited = 100
+        val maxVisited = globalRule.maxNodesInspected
 
         var hasTier1FuzzyId = false
         var hasTier2Label = false
         var hasTier3Layout = false
+        var hasActive9by16VideoSurface = false
 
         try {
             while (queue.isNotEmpty() && visited < maxVisited) {
@@ -1064,53 +1084,61 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 val desc = (node.contentDescription?.toString() ?: "").lowercase()
                 val className = (node.className?.toString() ?: "")
 
-                // Tier 1 — Fuzzy Resource ID Scanning
+                // Aspect Ratio & Video Surface Detection:
+                // Check node class names for SurfaceView, TextureView, or PlayerView occupying vertical 9:16 aspect ratios (1.77 ± 0.1)
+                if (!hasActive9by16VideoSurface) {
+                    if (engine.isVertical9by16VideoSurface(node, screenWidth, screenHeight)) {
+                        hasActive9by16VideoSurface = true
+                    }
+                }
+
+                // Tier 1 — Fuzzy Resource ID Scanning (driven dynamically)
                 if (!hasTier1FuzzyId) {
-                    if (resId.contains("reel") || resId.contains("clip") ||
-                        resId.contains("shorts_player") || resId.contains("reel_viewer")
-                    ) {
+                    if (appRule.fuzzyResourceIds.any { kw -> resId.contains(kw) }) {
                         hasTier1FuzzyId = true
                     }
                 }
 
-                // Tier 2 — Accessibility Label & Content Description Fallback
+                // Tier 2 — Accessibility Label & Content Description Fallback (driven dynamically)
                 if (!hasTier2Label) {
-                    if (text.contains("reels") || desc.contains("reels") ||
-                        text.contains("shorts") || desc.contains("shorts") ||
-                        text.contains("original audio") || desc.contains("original audio") ||
-                        text.contains("sound") || desc.contains("sound") ||
-                        text.contains("remix") || desc.contains("remix")
-                    ) {
+                    if (appRule.labelKeywords.any { kw ->
+                            (text.isNotEmpty() && text.contains(kw)) || (desc.isNotEmpty() && desc.contains(kw))
+                        }) {
                         hasTier2Label = true
                     }
                 }
 
-                // Tier 3 — Structural & Geometry Layout Signature
+                // Tier 3 — Structural & Geometry Layout Signature:
+                // Full-screen vertical swipe layout (ViewPager2 or RecyclerView) >= 90% screen height & width
                 if (!hasTier3Layout) {
-                    val isSwipeContainer = className.contains("ViewPager2") ||
-                            className.contains("RecyclerView") ||
+                    val isSwipeContainer = appRule.containerClasses.any { cls -> className.contains(cls) } ||
                             resId.contains("view_pager") ||
                             resId.contains("clips_viewer")
 
                     if (isSwipeContainer && node.isVisibleToUser) {
                         val rect = Rect()
                         node.getBoundsInScreen(rect)
-                        val coversNinetyPercent = rect.width() >= (screenWidth * 0.90f) &&
-                                rect.height() >= (screenHeight * 0.90f)
+                        val coversRequired = rect.width() >= (screenWidth * appRule.minCoverageFraction) &&
+                                rect.height() >= (screenHeight * appRule.minCoverageFraction)
 
-                        if (coversNinetyPercent && hasVerticalActionRailChildren(node, screenWidth)) {
+                        if (coversRequired && hasVerticalActionRailChildren(node, screenWidth, appRule)) {
                             hasTier3Layout = true
                         }
                     }
                 }
 
-                // Early exit if Tier 3 confirmed or both Tier 1 and Tier 2 confirmed
-                if (hasTier3Layout || (hasTier1FuzzyId && hasTier2Label)) {
+                // Early exit conditions:
+                // 1. Tier 3 structural swipe container confirmed
+                // 2. Both Tier 1 fuzzy ID and Tier 2 label confirmed
+                // 3. Active 9:16 video surface confirmed AND at least one short-form indicator (Tier 1 or Tier 2)
+                if (hasTier3Layout || (hasTier1FuzzyId && hasTier2Label) ||
+                    (hasActive9by16VideoSurface && (hasTier1FuzzyId || hasTier2Label))
+                ) {
                     return true
                 }
 
-                // Depth-limited search (up to 7 levels deep)
-                if (depth < 7) {
+                // Depth-limited search (up to maxTreeDepth levels deep, default 7)
+                if (depth < globalRule.maxTreeDepth) {
                     for (i in 0 until node.childCount) {
                         val child = node.getChild(i)
                         if (child != null) {
@@ -1128,11 +1156,19 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             }
         }
 
-        return hasTier3Layout || (hasTier1FuzzyId && hasTier2Label)
+        return hasTier3Layout || (hasTier1FuzzyId && hasTier2Label) ||
+                (hasActive9by16VideoSurface && (hasTier1FuzzyId || hasTier2Label))
     }
 
-    private fun hasVerticalActionRailChildren(container: AccessibilityNodeInfo, screenWidth: Int): Boolean {
-        val rightEdgeThreshold = (screenWidth * 0.70f).toInt()
+    private fun hasVerticalActionRailChildren(
+        container: AccessibilityNodeInfo,
+        screenWidth: Int,
+        appRule: AppHeuristicRule? = null
+    ): Boolean {
+        val thresholdFraction = appRule?.actionRailRightThresholdFraction ?: 0.70f
+        val rightEdgeThreshold = (screenWidth * thresholdFraction).toInt()
+        val requiredCount = appRule?.minActionButtons ?: 2
+        val actionKeywords = appRule?.actionRailKeywords ?: listOf("action", "like", "comment", "share")
         var actionButtonCount = 0
 
         val queue = ArrayDeque<AccessibilityNodeInfo>().apply { add(container) }
@@ -1152,12 +1188,11 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 val resId = (node.viewIdResourceName ?: "").lowercase()
                 val desc = (node.contentDescription?.toString() ?: "").lowercase()
 
-                if (isButton || resId.contains("action") || resId.contains("like") ||
-                    resId.contains("comment") || resId.contains("share") ||
-                    desc.contains("like") || desc.contains("comment") || desc.contains("share")
-                ) {
+                val matchesActionKw = actionKeywords.any { kw -> resId.contains(kw) || desc.contains(kw) }
+
+                if (isButton || matchesActionKw) {
                     actionButtonCount++
-                    if (actionButtonCount >= 2) {
+                    if (actionButtonCount >= requiredCount) {
                         return true
                     }
                 }
@@ -1167,7 +1202,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 node.getChild(i)?.let { queue.add(it) }
             }
         }
-        return actionButtonCount >= 2
+        return actionButtonCount >= requiredCount
     }
 
     override fun onInterrupt() {

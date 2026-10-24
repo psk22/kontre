@@ -1,0 +1,111 @@
+{
+  "version": 2,
+  "lastUpdated": 1729800000000,
+  "instagram": {
+    "fuzzyResourceIds": [
+      "reel",
+      "clip",
+      "reel_viewer",
+      "clips_viewer",
+      "clips_viewer_view_pager",
+      "clips_viewer_container",
+      "root_clips_layout",
+      "clips_action_button",
+      "clips_video_container"
+    ],
+    "labelKeywords": [
+      "reels",
+      "clips",
+      "original audio",
+      "sound",
+      "remix",
+      "reel by"
+    ],
+    "actionRailKeywords": [
+      "action",
+      "like",
+      "comment",
+      "share",
+      "audio",
+      "pivot"
+    ],
+    "containerClasses": [
+      "ViewPager2",
+      "RecyclerView",
+      "view_pager",
+      "clips_viewer"
+    ],
+    "minCoverageFraction": 0.9,
+    "actionRailRightThresholdFraction": 0.7,
+    "minActionButtons": 2,
+    "storyViewIds": [
+      "com.instagram.android:id/story_progress",
+      "com.instagram.android:id/stories_progress_bar",
+      "com.instagram.android:id/segment_progress_bar",
+      "com.instagram.android:id/reel_viewer_progress_bar",
+      "com.instagram.android:id/reel_viewer_header",
+      "com.instagram.android:id/reel_viewer_view_pager",
+      "com.instagram.android:id/reel_viewer_root",
+      "com.instagram.android:id/reel_viewer_container",
+      "com.instagram.android:id/story_item",
+      "com.instagram.android:id/story_viewer_reply",
+      "com.instagram.android:id/story_reply_composer"
+    ],
+    "dmViewIds": [
+      "com.instagram.android:id/direct_message_list",
+      "com.instagram.android:id/row_thread_composer",
+      "com.instagram.android:id/direct_thread_header",
+      "com.instagram.android:id/direct_thread_composer",
+      "com.instagram.android:id/message_composer",
+      "com.instagram.android:id/direct_inbox",
+      "com.instagram.android:id/inbox_recycler_view",
+      "com.instagram.android:id/direct_thread_view"
+    ]
+  },
+  "youtube": {
+    "fuzzyResourceIds": [
+      "reel_recycler",
+      "reel_player",
+      "shorts_player",
+      "shorts_container",
+      "shorts_pager",
+      "shorts_video",
+      "reel_player_page_content"
+    ],
+    "labelKeywords": [
+      "shorts",
+      "sound",
+      "remix",
+      "original sound"
+    ],
+    "actionRailKeywords": [
+      "action",
+      "like",
+      "dislike",
+      "comment",
+      "share",
+      "remix"
+    ],
+    "containerClasses": [
+      "ViewPager2",
+      "RecyclerView",
+      "reel_recycler"
+    ],
+    "minCoverageFraction": 0.9,
+    "actionRailRightThresholdFraction": 0.7,
+    "minActionButtons": 2
+  },
+  "global": {
+    "videoSurfaceClasses": [
+      "SurfaceView",
+      "TextureView",
+      "PlayerView",
+      "VideoView"
+    ],
+    "targetAspectRatio": 1.777,
+    "aspectRatioTolerance": 0.12,
+    "minVideoHeightFraction": 0.5,
+    "maxTreeDepth": 7,
+    "maxNodesInspected": 120
+  }
+}
