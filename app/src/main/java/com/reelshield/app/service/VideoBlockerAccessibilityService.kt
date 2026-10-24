@@ -1,6 +1,7 @@
 package com.reelshield.app.service
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -92,6 +93,23 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         return pkg == PACKAGE_INSTAGRAM || pkg == PACKAGE_INSTAGRAM_LITE || pkg == PACKAGE_YOUTUBE
     }
 
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        try {
+            val info = serviceInfo ?: AccessibilityServiceInfo()
+            info.flags = info.flags or
+                    AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS or
+                    AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
+                    AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+            info.feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
+            info.notificationTimeout = 50
+            serviceInfo = info
+            Log.i(TAG, "VideoBlockerAccessibilityService connected with FLAG_INCLUDE_NOT_IMPORTANT_VIEWS.")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error configuring service info in onServiceConnected", e)
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         instance = this
@@ -139,14 +157,15 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             return
         }
 
-        // SAFEGUARD 2: Package & Toggle Filtering
+        // SAFEGUARD 2: Package Filtering
         if (!isSupportedPackage(packageName)) {
-            // Background/system events (status bar clock tick, battery, notifications) shouldn't kill active reel session
-            val activePkg = rootInActiveWindow?.packageName?.toString() ?: ""
-            if (!isSupportedPackage(activePkg)) {
-                cancelPendingHidePill()
-                cancelDwellTimer()
-                hideCounterPill()
+            if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                val activePkg = rootInActiveWindow?.packageName?.toString() ?: ""
+                if (activePkg.isNotEmpty() && !isSupportedPackage(activePkg) && activePkg != "com.android.systemui" && activePkg != applicationContext.packageName) {
+                    cancelPendingHidePill()
+                    cancelDwellTimer()
+                    hideCounterPill()
+                }
             }
             return
         }
@@ -173,7 +192,27 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         }
 
         quotaManager.checkAndResetDaily()
-        val rootNode = rootInActiveWindow ?: return
+
+        // Robust root node resolution
+        var rootNode = rootInActiveWindow
+        if (rootNode == null || !isSupportedPackage(rootNode.packageName?.toString() ?: "")) {
+            val appWindow = windows?.firstOrNull { win ->
+                val r = win.root
+                r != null && isSupportedPackage(r.packageName?.toString() ?: "")
+            }
+            if (appWindow?.root != null) {
+                rootNode = appWindow.root
+            } else if (event.source != null) {
+                var node = event.source
+                while (node?.parent != null) {
+                    node = node.parent
+                }
+                if (node != null && isSupportedPackage(node.packageName?.toString() ?: "")) {
+                    rootNode = node
+                }
+            }
+        }
+        if (rootNode == null) return
 
         // Evaluate if user is currently inside short-form video UI using heuristics
         val isShortFormDetected = detectShortFormVideo(rootNode, packageName)
@@ -212,8 +251,18 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 }
             }
         } else {
-            // User might be transitioning between swipes: debounce hide by 600ms
-            scheduleDebouncedHidePill()
+            // Check if user is explicitly on an immune screen
+            val isExplicitImmune = (packageName == PACKAGE_INSTAGRAM || packageName == PACKAGE_INSTAGRAM_LITE) &&
+                    (isInstagramStory(rootNode) || isInstagramTextingOrChatting(rootNode) || isInstagramHomeFeed(rootNode))
+            val isYtImmune = packageName == PACKAGE_YOUTUBE && isYouTubeTextingOrComments(rootNode)
+
+            if (isExplicitImmune || isYtImmune) {
+                cancelPendingHidePill()
+                cancelDwellTimer()
+                hideCounterPill()
+            } else {
+                scheduleDebouncedHidePill()
+            }
         }
     }
 
@@ -227,11 +276,15 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
     private fun scheduleDebouncedHidePill() {
         if (hidePillRunnable != null) return
         hidePillRunnable = Runnable {
-            cancelDwellTimer()
-            hideCounterPill()
+            val currentRoot = rootInActiveWindow
+            val currentPkg = currentRoot?.packageName?.toString() ?: ""
+            if (currentRoot == null || !detectShortFormVideo(currentRoot, currentPkg)) {
+                cancelDwellTimer()
+                hideCounterPill()
+            }
             hidePillRunnable = null
         }
-        mainHandler.postDelayed(hidePillRunnable!!, 1500L)
+        mainHandler.postDelayed(hidePillRunnable!!, 2500L)
     }
 
     /**
@@ -367,21 +420,16 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 updatePillContent(view, total, limit, isTotalBlock, isLimitReached, isWatchingLastAllowed, previewState)
 
                 val density = resources.displayMetrics.density
-                val topMarginPx = (28 * density).toInt()
+                val topMarginPx = (32 * density).toInt()
 
-                val canDrawOverlay = Settings.canDrawOverlays(this)
                 val preferredWindowType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    if (canDrawOverlay) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                    else WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+                    WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
                 } else {
                     WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
                 }
 
                 val fallbackWindowType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    if (preferredWindowType == WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
-                        WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
-                    else
-                        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 } else {
                     WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
                 }
@@ -391,7 +439,8 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                     WindowManager.LayoutParams.WRAP_CONTENT,
                     preferredWindowType,
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                     PixelFormat.TRANSLUCENT
                 ).apply {
                     gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
@@ -569,7 +618,6 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
      * action buttons, caption, and bottom navigation bar) NEVER exceed 50-55% height.
      */
     private fun isDedicatedFullscreenReel(node: AccessibilityNodeInfo): Boolean {
-        if (!node.isVisibleToUser) return false
         val rect = Rect()
         node.getBoundsInScreen(rect)
         if (rect.isEmpty) return false
@@ -734,9 +782,50 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             return true
         }
 
-        // 4. Dedicated Reels bottom tab selected in tab_bar
+        // 4. Clips Video Container
+        val videoContainer = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_video_container")
+        if (!videoContainer.isNullOrEmpty()) {
+            return true
+        }
+
+        // 5. Swipe Refresh Container inside Clips
+        val clipsSwipe = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_swipe_refresh_container")
+        if (!clipsSwipe.isNullOrEmpty()) {
+            return true
+        }
+
+        // 6. Dedicated Reels bottom tab selected in tab_bar
         if (isInstagramReelsTabSelected(root)) {
             return true
+        }
+
+        // 7. Clips UFI actions bar (Like, comment, share, audio buttons)
+        val clipsUfi = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_ufi_like_button")
+        if (!clipsUfi.isNullOrEmpty()) {
+            return true
+        }
+        val clipsAudio = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_audio_mix_button")
+        if (!clipsAudio.isNullOrEmpty()) {
+            return true
+        }
+
+        // 8. Tree walk for clips_viewer / clips_action / "Reel by"
+        val queue = ArrayDeque<AccessibilityNodeInfo>().apply { add(root) }
+        var visited = 0
+        while (queue.isNotEmpty() && visited < 40) {
+            val node = queue.removeFirst()
+            visited++
+            val resId = (node.viewIdResourceName ?: "").lowercase()
+            val desc = (node.contentDescription?.toString() ?: "").lowercase()
+            if (resId.contains("clips_viewer") || resId.contains("clips_video") || resId.contains("clips_action")) {
+                return true
+            }
+            if (desc.startsWith("reel by") || desc.contains("reel by @")) {
+                return true
+            }
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { queue.add(it) }
+            }
         }
 
         return false
@@ -840,9 +929,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         // 3. Check for Home feed list containers in standard Instagram
         val feedIds = listOf(
             "com.instagram.android:id/feed_recycler_view",
-            "com.instagram.android:id/sticky_header_list",
-            "com.instagram.android:id/main_feed_container",
-            "com.instagram.android:id/refreshable_container"
+            "com.instagram.android:id/main_feed_container"
         )
         for (id in feedIds) {
             val nodes = root.findAccessibilityNodeInfosByViewId(id)
@@ -967,29 +1054,28 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             return false
         }
 
-        // Normal long-form video player safeguard
-        if (!root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/watch_while_layout").isNullOrEmpty()) {
-            val reelRecycler = root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/reel_recycler")
-            val reelPlayer = root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/reel_player_page_content")
-            val hasReelRecycler = !reelRecycler.isNullOrEmpty() && reelRecycler.any { isFullScreenNode(it) }
-            val hasReelPlayer = !reelPlayer.isNullOrEmpty() && reelPlayer.any { isFullScreenNode(it) }
-            if (!hasReelRecycler && !hasReelPlayer) {
-                return false
+        // SIGNATURE 1: Dedicated Shorts player container or time bar
+        val shortsViewIds = listOf(
+            "com.google.android.youtube:id/reel_recycler",
+            "com.google.android.youtube:id/reel_player_page_content",
+            "com.google.android.youtube:id/reel_watch_fragment",
+            "com.google.android.youtube:id/reel_player_overlay_anchor",
+            "com.google.android.youtube:id/reel_time_bar",
+            "com.google.android.youtube:id/reel_container",
+            "com.google.android.youtube:id/reel_player",
+            "com.google.android.youtube:id/shorts_player_view"
+        )
+        for (id in shortsViewIds) {
+            val nodes = root.findAccessibilityNodeInfosByViewId(id)
+            if (!nodes.isNullOrEmpty()) {
+                return true
             }
         }
 
-        // SIGNATURE 1: Dedicated Shorts player container (must be visible and full-screen)
-        // Works whether launched from Home feed, Shorts tab, or link!
-        val reelRecycler = root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/reel_recycler")
-        if (!reelRecycler.isNullOrEmpty() && reelRecycler.any { isFullScreenNode(it) }) return true
-
-        val reelPlayer = root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/reel_player_page_content")
-        if (!reelPlayer.isNullOrEmpty() && reelPlayer.any { isFullScreenNode(it) }) return true
-
-        // SIGNATURE 2: Shorts Tab selected in bottom bar
+        // SIGNATURE 2: Shorts Tab selected in bottom bar or Shorts Action Overlay Buttons
         val queue = ArrayDeque<AccessibilityNodeInfo>().apply { add(root) }
         var visited = 0
-        while (queue.isNotEmpty() && visited < 40) {
+        while (queue.isNotEmpty() && visited < 50) {
             val node = queue.removeFirst()
             visited++
 
@@ -998,7 +1084,12 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
             if (node.isSelected) {
                 if (desc.contains("short") || resId.contains("shorts_tab")) return true
-                if (desc.contains("home") || resId.contains("home_tab")) return false
+                if (desc == "home" || desc.startsWith("home,") || desc == "subscriptions" || desc == "you") return false
+            }
+
+            if (desc.startsWith("like this video") || desc.startsWith("dislike this video") || desc.startsWith("remix this video") ||
+                resId.contains("reel_like") || resId.contains("reel_comment")) {
+                return true
             }
 
             for (i in 0 until node.childCount) {

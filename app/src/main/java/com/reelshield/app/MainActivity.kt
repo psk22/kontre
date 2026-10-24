@@ -997,6 +997,17 @@ fun ScopeItem(
 }
 
 private fun isAccessibilityServiceActive(context: Context): Boolean {
+    if (VideoBlockerAccessibilityService.instance != null) return true
+    try {
+        val settingValue = Settings.Secure.getString(
+            context.contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: ""
+        if (settingValue.contains("VideoBlocker", ignoreCase = true) || settingValue.contains(context.packageName, ignoreCase = true)) {
+            return true
+        }
+    } catch (_: Exception) {}
+
     val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager ?: return false
     val enabledServices = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
     return enabledServices.any { service ->
