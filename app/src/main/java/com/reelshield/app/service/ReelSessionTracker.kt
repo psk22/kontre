@@ -18,6 +18,7 @@ import java.util.LinkedHashSet
  * Rules:
  * - When Total Block Mode is OFF, user has a 50 reels/shorts daily allowance.
  * - Live counter updates as videos are watched.
+ * - Dwell tracking is protected against minor UI re-renders, marquee scrolls, and like animations.
  * - When user hits the 50th video (quota reached):
  *     1. A warning is delivered to the user (pill warning & toast alert).
  *     2. User is allowed to finish watching that 50th video.
@@ -43,6 +44,14 @@ class ReelSessionTracker(
 
     @Volatile
     var currentActiveHash: String? = null
+        private set
+
+    @Volatile
+    var currentActiveCreator: String? = null
+        private set
+
+    @Volatile
+    var currentActiveCaption: String? = null
         private set
 
     /**
@@ -79,7 +88,10 @@ class ReelSessionTracker(
      * Called whenever a candidate reel fingerprint is extracted from the active window.
      * Manages deduplication, allowance checks, and initiates the 1500ms dwell countdown.
      */
-    fun onReelNodeDetected(fingerprintHash: String, platform: String) {
+    fun onReelNodeDetected(details: ReelFingerprintExtractor.ReelDetails) {
+        val fingerprintHash = details.hash
+        val platform = details.platform
+
         synchronized(lock) {
             // Case 1: Total Block Mode (0 allowance) - Block instantly
             if (quotaManager.isTotalBlockEnabled) {
@@ -90,8 +102,12 @@ class ReelSessionTracker(
 
             // Case 2: Daily quota already reached (50/50 or higher)
             if (quotaManager.isLimitReached) {
-                // If user is still watching the 50th video that was granted warning, allow them to finish it
-                if (lastAllowedHash != null && fingerprintHash == lastAllowedHash) {
+                val isSameAllowedVideo = lastAllowedHash != null && (
+                    fingerprintHash == lastAllowedHash ||
+                    (details.creator.isNotEmpty() && details.creator == currentActiveCreator)
+                )
+
+                if (isSameAllowedVideo) {
                     currentActiveHash = fingerprintHash
                     return
                 }
@@ -107,30 +123,64 @@ class ReelSessionTracker(
                 return
             }
 
+            // Case 3B: Same Creator Session (UI re-render, caption loaded, or audio marquee scrolled)
+            if (currentActiveCreator != null && details.creator.isNotEmpty() && details.creator == currentActiveCreator) {
+                val captionMatches = details.captionSnippet.isEmpty() ||
+                        currentActiveCaption.isNullOrEmpty() ||
+                        details.captionSnippet == currentActiveCaption
+
+                if (captionMatches) {
+                    currentActiveHash = fingerprintHash
+                    if (currentActiveCaption.isNullOrEmpty() && details.captionSnippet.isNotEmpty()) {
+                        currentActiveCaption = details.captionSnippet
+                    }
+                    return // Keep dwell timer running uninterrupted!
+                }
+            }
+
             // Case 4: Previously consumed video in LRU cache (user swiped back up/down)
             if (consumedHashes.contains(fingerprintHash)) {
                 Log.d(TAG, "Reel already consumed in LRU cache ($fingerprintHash). Updating active hash without dwell.")
                 currentActiveHash = fingerprintHash
+                currentActiveCreator = details.creator
+                currentActiveCaption = details.captionSnippet
                 cancelDwellTimerLocked()
                 return
             }
 
             // Case 5: Genuinely new video: cancel previous dwell and start fresh 1500ms timer
-            Log.d(TAG, "New reel detected ($fingerprintHash) on $platform. Starting 1500ms dwell countdown.")
+            Log.d(TAG, "New reel detected [${details.creator}]: $fingerprintHash on $platform. Starting 1500ms dwell countdown.")
             cancelDwellTimerLocked()
             currentActiveHash = fingerprintHash
+            currentActiveCreator = details.creator
+            currentActiveCaption = details.captionSnippet
 
             dwellJob = serviceScope.launch(Dispatchers.Default) {
                 delay(DWELL_THRESHOLD_MS)
 
                 // Check that the video is still active when timer finishes
                 synchronized(lock) {
-                    if (currentActiveHash == fingerprintHash) {
+                    val isStillActive = currentActiveHash == fingerprintHash ||
+                            (currentActiveCreator != null && details.creator.isNotEmpty() && currentActiveCreator == details.creator)
+
+                    if (isStillActive) {
                         markReelAsConsumedLocked(fingerprintHash, platform)
                     }
                 }
             }
         }
+    }
+
+    fun onReelNodeDetected(fingerprintHash: String, platform: String) {
+        onReelNodeDetected(
+            ReelFingerprintExtractor.ReelDetails(
+                hash = fingerprintHash,
+                creator = "",
+                audioTitle = "",
+                captionSnippet = "",
+                platform = platform
+            )
+        )
     }
 
     /**
@@ -142,6 +192,8 @@ class ReelSessionTracker(
                 Log.d(TAG, "User navigated away from reel. Cancelling dwell job.")
                 cancelDwellTimerLocked()
                 currentActiveHash = null
+                currentActiveCreator = null
+                currentActiveCaption = null
                 lastAllowedHash = null
             }
         }
@@ -213,6 +265,8 @@ class ReelSessionTracker(
         synchronized(lock) {
             cancelDwellTimerLocked()
             currentActiveHash = null
+            currentActiveCreator = null
+            currentActiveCaption = null
             lastAllowedHash = null
             consumedHashes.clear()
         }

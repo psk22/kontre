@@ -46,7 +46,9 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
     // Floating Counter Pill
     private var pillView: View? = null
+    private var pillLayoutParams: WindowManager.LayoutParams? = null
     private var isPillShowing = false
+    private var hidePillRunnable: Runnable? = null
 
     // Debounce to prevent repeated intervention bursts
     private var lastInterventionTimestamp = 0L
@@ -137,17 +139,20 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
         // SAFEGUARD 2: Package & Toggle Filtering
         if (!isSupportedPackage(packageName)) {
+            cancelPendingHidePill()
             cancelDwellTimer()
             hideCounterPill()
             return
         }
 
         if ((packageName == PACKAGE_INSTAGRAM || packageName == PACKAGE_INSTAGRAM_LITE) && !quotaManager.isInstagramBlockEnabled) {
+            cancelPendingHidePill()
             cancelDwellTimer()
             hideCounterPill()
             return
         }
         if (packageName == PACKAGE_YOUTUBE && !quotaManager.isYouTubeBlockEnabled) {
+            cancelPendingHidePill()
             cancelDwellTimer()
             hideCounterPill()
             return
@@ -155,6 +160,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
         // SAFEGUARD 3: If keyboard is visible, user is actively texting/typing!
         if (isKeyboardVisible()) {
+            cancelPendingHidePill()
             cancelDwellTimer()
             hideCounterPill()
             return
@@ -167,6 +173,8 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         val isShortFormDetected = detectShortFormVideo(rootNode, packageName)
 
         if (isShortFormDetected) {
+            cancelPendingHidePill()
+
             // User is watching a Reel / Short: Show the live top counter pill!
             showOrUpdateCounterPill()
 
@@ -183,24 +191,41 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 return
             }
 
-            // Extract composite unique fingerprint hash
-            val fingerprintHash = extractReelFingerprint(rootNode)
+            // Extract composite unique fingerprint details
+            val details = ReelFingerprintExtractor.extractDetails(rootNode)
             val platform = if (packageName == PACKAGE_YOUTUBE) "YouTube" else "Instagram"
 
-            if (fingerprintHash != null) {
-                reelSessionTracker.onReelNodeDetected(fingerprintHash, platform)
+            if (details != null) {
+                reelSessionTracker.onReelNodeDetected(details)
             } else {
-                // If fingerprint could not be extracted and quota was reached without active last session, eject
-                if (quotaManager.isLimitReached && reelSessionTracker.lastAllowedHash == null) {
+                val fallbackHash = extractReelFingerprint(rootNode)
+                if (fallbackHash != null) {
+                    reelSessionTracker.onReelNodeDetected(fallbackHash, platform)
+                } else if (quotaManager.isLimitReached && reelSessionTracker.lastAllowedHash == null) {
                     triggerIntervention(packageName)
                 }
             }
         } else {
-            // User is on Home screen/feed, chatting, or viewing stories:
-            // Cancel dwell timer and hide the counter pill immediately!
+            // User might be transitioning between swipes: debounce hide by 600ms
+            scheduleDebouncedHidePill()
+        }
+    }
+
+    private fun cancelPendingHidePill() {
+        hidePillRunnable?.let {
+            mainHandler.removeCallbacks(it)
+            hidePillRunnable = null
+        }
+    }
+
+    private fun scheduleDebouncedHidePill() {
+        if (hidePillRunnable != null) return
+        hidePillRunnable = Runnable {
             cancelDwellTimer()
             hideCounterPill()
+            hidePillRunnable = null
         }
+        mainHandler.postDelayed(hidePillRunnable!!, 600L)
     }
 
     /**
@@ -306,6 +331,13 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
             if (isPillShowing && pillView != null) {
                 updatePillContent(pillView!!, total, limit, isTotalBlock, isLimitReached, isWatchingLastAllowed, previewState)
+                pillView?.requestLayout()
+                pillView?.invalidate()
+                try {
+                    pillLayoutParams?.let { lp -> windowManager.updateViewLayout(pillView, lp) }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to update pill view layout in WindowManager", e)
+                }
                 return@post
             }
 
@@ -334,6 +366,8 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                     gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
                     y = topMarginPx
                 }
+
+                pillLayoutParams = layoutParams
 
                 try {
                     windowManager.addView(view, layoutParams)
@@ -422,6 +456,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                     Log.e(TAG, "Error removing counter pill", e)
                 } finally {
                     pillView = null
+                    pillLayoutParams = null
                     isPillShowing = false
                     Log.d(TAG, "Top reel counter pill hidden.")
                 }
@@ -616,17 +651,10 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             "com.instagram.android:id/stories_progress_bar",
             "com.instagram.android:id/segment_progress_bar",
             "com.instagram.android:id/reel_viewer_progress_bar",
-            "com.instagram.android:id/reel_viewer_header",
-            "com.instagram.android:id/reel_viewer_title",
-            "com.instagram.android:id/reel_viewer_subtitle",
-            "com.instagram.android:id/reel_viewer_timestamp",
-            "com.instagram.android:id/reel_viewer_view_pager",
-            "com.instagram.android:id/reel_viewer_root",
             "com.instagram.android:id/story_item",
             "com.instagram.android:id/story_viewer_reply",
             "com.instagram.android:id/story_reply_composer",
-            "com.instagram.android:id/direct_story_reply",
-            "com.instagram.android:id/toolbar_container"
+            "com.instagram.android:id/direct_story_reply"
         )
 
         for (id in storyViewIds) {
@@ -636,10 +664,13 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             }
         }
 
-        // 2. Check for reel_viewer_container (Story viewer container in Instagram)
+        // 2. Check for reel_viewer_container with active story progress bars
         val reelViewerContainer = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/reel_viewer_container")
         if (!reelViewerContainer.isNullOrEmpty() && reelViewerContainer.any { it.isVisibleToUser }) {
-            return true
+            val hasStoryBars = !root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/story_progress").isNullOrEmpty() ||
+                    !root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/reel_viewer_progress_bar").isNullOrEmpty() ||
+                    !root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/segment_progress_bar").isNullOrEmpty()
+            if (hasStoryBars) return true
         }
 
         // 3. Tree-walk check for Story progress bar, reply prompts, or story header
@@ -658,8 +689,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 return true
             }
 
-            if (resId.contains("reel_viewer_header") || resId.contains("story_reply") ||
-                resId.contains("story_composer")) {
+            if (resId.contains("story_reply") || resId.contains("story_composer")) {
                 return true
             }
 
@@ -694,17 +724,22 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         }
 
         val clipsPager = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_viewer_view_pager")
-        if (!clipsPager.isNullOrEmpty() && clipsPager.any { isDedicatedFullscreenReel(it) }) {
+        if (!clipsPager.isNullOrEmpty()) {
             return true
         }
 
         val viewerContainer = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_viewer_container")
-        if (!viewerContainer.isNullOrEmpty() && viewerContainer.any { isDedicatedFullscreenReel(it) }) {
+        if (!viewerContainer.isNullOrEmpty()) {
             return true
         }
 
         val rootClips = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/root_clips_layout")
-        if (!rootClips.isNullOrEmpty() && rootClips.any { isDedicatedFullscreenReel(it) }) {
+        if (!rootClips.isNullOrEmpty()) {
+            return true
+        }
+
+        val videoContainer = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_video_container")
+        if (!videoContainer.isNullOrEmpty()) {
             return true
         }
 
@@ -1002,6 +1037,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() {
         Log.w(TAG, "VideoBlockerAccessibilityService interrupted.")
+        cancelPendingHidePill()
         cancelDwellTimer()
         hideCounterPill()
     }
@@ -1013,6 +1049,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         }
         instance = null
         serviceScope.cancel()
+        cancelPendingHidePill()
         cancelDwellTimer()
         hideCounterPill()
     }
