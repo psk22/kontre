@@ -231,7 +231,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             hideCounterPill()
             hidePillRunnable = null
         }
-        mainHandler.postDelayed(hidePillRunnable!!, 600L)
+        mainHandler.postDelayed(hidePillRunnable!!, 1500L)
     }
 
     /**
@@ -367,7 +367,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 updatePillContent(view, total, limit, isTotalBlock, isLimitReached, isWatchingLastAllowed, previewState)
 
                 val density = resources.displayMetrics.density
-                val topMarginPx = (65 * density).toInt()
+                val topMarginPx = (28 * density).toInt()
 
                 val canDrawOverlay = Settings.canDrawOverlays(this)
                 val preferredWindowType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -391,8 +391,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                     WindowManager.LayoutParams.WRAP_CONTENT,
                     preferredWindowType,
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
                     PixelFormat.TRANSLUCENT
                 ).apply {
                     gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
@@ -553,18 +552,14 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
      * Checks if a node occupies full-screen dimensions for YouTube Shorts player containers.
      */
     private fun isFullScreenNode(node: AccessibilityNodeInfo): Boolean {
-        if (!node.isVisibleToUser) return false
         val rect = Rect()
         node.getBoundsInScreen(rect)
-        if (rect.isEmpty) return false
+        if (rect.isEmpty) return true
 
         val metrics = resources.displayMetrics
         val screenHeight = if (metrics.heightPixels > 0) metrics.heightPixels else 2000
-        val screenWidth = if (metrics.widthPixels > 0) metrics.widthPixels else 1000
-
-        val minHeight = (screenHeight * 0.60f).toInt()
-        val minWidth = (screenWidth * 0.60f).toInt()
-        return rect.height() >= minHeight && rect.width() >= minWidth
+        val minHeight = (screenHeight * 0.40f).toInt()
+        return rect.height() >= minHeight
     }
 
     /**
@@ -721,21 +716,21 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             return false
         }
 
-        // 1. Clips ViewPager (dedicated vertical swipe player for Reels - must be visible & >= 65% height)
+        // 1. Clips ViewPager (dedicated vertical swipe player for Reels)
         val clipsPager = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_viewer_view_pager")
-        if (!clipsPager.isNullOrEmpty() && clipsPager.any { isDedicatedFullscreenReel(it) }) {
+        if (!clipsPager.isNullOrEmpty()) {
             return true
         }
 
-        // 2. Clips Viewer Container (dedicated viewer - must be visible & >= 65% height)
+        // 2. Clips Viewer Container (dedicated viewer)
         val viewerContainer = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_viewer_container")
-        if (!viewerContainer.isNullOrEmpty() && viewerContainer.any { isDedicatedFullscreenReel(it) }) {
+        if (!viewerContainer.isNullOrEmpty()) {
             return true
         }
 
-        // 3. Root Clips Layout (must be visible & >= 65% height)
+        // 3. Root Clips Layout (dedicated layout)
         val rootClips = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/root_clips_layout")
-        if (!rootClips.isNullOrEmpty() && rootClips.any { isDedicatedFullscreenReel(it) }) {
+        if (!rootClips.isNullOrEmpty()) {
             return true
         }
 
@@ -758,7 +753,12 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             return true
         }
 
-        // 2. Direct Messages & Chat Known View IDs (standard Instagram)
+        // 2. If dedicated fullscreen Reel viewer is active, user is watching a Reel (NOT chatting)
+        if (hasDedicatedFullscreenReel(root)) {
+            return false
+        }
+
+        // 3. Direct Messages & Chat Known View IDs (standard Instagram)
         val dmViewIds = listOf(
             "com.instagram.android:id/direct_message_list",
             "com.instagram.android:id/row_thread_composer",
@@ -766,9 +766,6 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             "com.instagram.android:id/direct_thread_header",
             "com.instagram.android:id/direct_thread_composer",
             "com.instagram.android:id/direct_text_message_composer",
-            "com.instagram.android:id/message_composer",
-            "com.instagram.android:id/composer_edittext",
-            "com.instagram.android:id/composer_container",
             "com.instagram.android:id/direct_composer_edit_text",
             "com.instagram.android:id/direct_inbox",
             "com.instagram.android:id/inbox_recycler_view",
@@ -789,27 +786,20 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
         for (id in dmViewIds) {
             val nodes = root.findAccessibilityNodeInfosByViewId(id)
-            if (!nodes.isNullOrEmpty() && nodes.any { it.isVisibleToUser }) {
-                // If a user tapped a shared Reel inside chat and launched dedicated fullscreen viewer on top:
-                val clipsPager = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_viewer_view_pager")
-                if (!clipsPager.isNullOrEmpty() && clipsPager.any { isDedicatedFullscreenReel(it) }) {
-                    return false
-                }
+            if (!nodes.isNullOrEmpty()) {
                 return true
             }
         }
 
-        // 3. Content description, text, and keyword matching across the tree
-        // Covers Instagram Lite and custom DM tabs (General, Primary, Requests, etc.)
+        // 4. Content description, text, and keyword matching across the tree
         val queue = ArrayDeque<AccessibilityNodeInfo>().apply { add(root) }
         var visited = 0
-        while (queue.isNotEmpty() && visited < 70) {
+        while (queue.isNotEmpty() && visited < 60) {
             val node = queue.removeFirst()
             visited++
 
             val text = (node.text?.toString() ?: "").trim().lowercase()
             val desc = (node.contentDescription?.toString() ?: "").trim().lowercase()
-            val resId = (node.viewIdResourceName ?: "").lowercase()
 
             // DM filter tabs (General, Primary, Requests, Channels)
             if (text == "general" || desc == "general" || text == "primary" || desc == "primary" ||
@@ -817,20 +807,10 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 return true
             }
 
-            // DMs header or message composer
-            if (text == "messages" || desc == "messages" || text == "chats" || desc == "chats" ||
-                text == "direct" || desc == "direct") {
-                return true
-            }
-
+            // DMs message composer placeholder
             if (text.startsWith("message...") || desc.startsWith("message...") ||
-                text.startsWith("send message") || desc.startsWith("send message") ||
                 text.startsWith("type a message") || desc.startsWith("type a message") ||
                 text.startsWith("write a message") || desc.startsWith("write a message")) {
-                return true
-            }
-
-            if (resId.contains("direct") || resId.contains("inbox") || resId.contains("composer")) {
                 return true
             }
 
@@ -848,12 +828,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
      */
     private fun isInstagramHomeFeed(root: AccessibilityNodeInfo): Boolean {
         // 1. If dedicated fullscreen Reel viewer is active, user is watching a Reel (NOT feed)
-        val clipsPager = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_viewer_view_pager")
-        if (!clipsPager.isNullOrEmpty() && clipsPager.any { isDedicatedFullscreenReel(it) }) {
-            return false
-        }
-        val viewerContainer = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_viewer_container")
-        if (!viewerContainer.isNullOrEmpty() && viewerContainer.any { isDedicatedFullscreenReel(it) }) {
+        if (hasDedicatedFullscreenReel(root)) {
             return false
         }
 
@@ -871,7 +846,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         )
         for (id in feedIds) {
             val nodes = root.findAccessibilityNodeInfosByViewId(id)
-            if (!nodes.isNullOrEmpty() && nodes.any { it.isVisibleToUser }) {
+            if (!nodes.isNullOrEmpty()) {
                 return true
             }
         }
@@ -965,26 +940,24 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             return false
         }
 
+        // --- SIGNATURE 1: Dedicated Fullscreen Clips ViewPager or Reels Tab ---
+        // Catches Reels opened from Reels tab, Home feed, Explore, Profile, or links!
+        if (hasDedicatedFullscreenReel(root)) {
+            return true
+        }
+
         // --- SAFEGUARD 3: Direct Messages & Chat Immunity (Text / Inbox / General Tab) ---
-        // Complete protection when in DMs/Inbox/General tab unless a fullscreen Reel was explicitly opened on top!
         if (isInstagramTextingOrChatting(root)) {
             return false
         }
 
         // --- SAFEGUARD 4: Home Feed Immunity ---
         // If the user is on the Home feed scrolling/viewing regular posts, DO NOT BLOCK!
-        // Allows scrolling the feed freely without getting kicked out.
         if (isInstagramHomeFeed(root)) {
             return false
         }
 
-        // --- SIGNATURE 1: Dedicated Fullscreen Clips ViewPager or Root Clips Layout ---
-        // Catches Reels opened by clicking on a Reel from Home feed, DMs, Explore, Profile, or links!
-        if (hasDedicatedFullscreenReel(root)) {
-            return true
-        }
-
-        // --- SIGNATURE 2: Generic / Lite Fullscreen Reel Player (when not on Home feed and not in DMs) ---
+        // --- SIGNATURE 2: Generic / Lite Fullscreen Reel Player ---
         return isGenericFullscreenReel(root)
     }
 
