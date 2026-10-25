@@ -54,11 +54,13 @@ data class AppHeuristicRule(
             return AppHeuristicRule(
                 fuzzyResourceIds = listOf(
                     "reel", "clip", "reel_viewer", "clips_viewer",
-                    "clips_viewer_view_pager", "clips_viewer_container", "root_clips_layout"
+                    "clips_viewer_view_pager", "clips_viewer_container", "root_clips_layout",
+                    "clips_video_container", "clips_swipe_refresh_container", "clips_item_container",
+                    "clips_media_component", "clips_viewer_media_container"
                 ),
                 labelKeywords = listOf("reels", "clips", "original audio", "sound", "remix"),
                 actionRailKeywords = listOf("action", "like", "comment", "share", "audio", "pivot"),
-                containerClasses = listOf("ViewPager2", "RecyclerView", "view_pager", "clips_viewer"),
+                containerClasses = listOf("ViewPager2", "RecyclerView", "view_pager", "clips_viewer", "clips_video_container"),
                 minCoverageFraction = 0.90f,
                 actionRailRightThresholdFraction = 0.70f,
                 minActionButtons = 2,

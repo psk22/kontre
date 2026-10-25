@@ -332,27 +332,28 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         quotaManager.checkAndResetDaily()
 
         val eventType = event.eventType
-        val isScrollOrContentChange = (eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED ||
-                eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+        val isScroll = eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED
+        val isContentChange = eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
 
         val now = android.os.SystemClock.uptimeMillis()
         val delta = now - lastEventProcessedTimestamp
 
         // -----------------------------------------------------------------
         // EVENT COALESCING / TIME-WINDOW THROTTLING:
-        // Accessibility events fire rapidly during fast scroll gestures (up to 40–60 events/sec).
-        // Throttle immediate execution when events arrive faster than 60ms, and schedule a 75ms debounce
-        // so tree traversal is executed once the UI settles after a swipe.
+        // Only throttle rapid swipe gestures (TYPE_VIEW_SCROLLED) to prevent 
+        // high-frequency tree traversals during fast scrolls.
+        // DO NOT indefinitely starve content changes (e.g. when tapping a Reel).
         // -----------------------------------------------------------------
-        if (isScrollOrContentChange && delta < THROTTLE_WINDOW_MS) {
-            cancelPendingSettle()
-            val settleRunnable = Runnable {
-                pendingSettleRunnable = null
-                lastEventProcessedTimestamp = android.os.SystemClock.uptimeMillis()
-                evaluateActiveWindow(packageName, candidateSubtree = null)
+        if (isScroll && delta < THROTTLE_WINDOW_MS) {
+            if (pendingSettleRunnable == null) {
+                val settleRunnable = Runnable {
+                    pendingSettleRunnable = null
+                    lastEventProcessedTimestamp = android.os.SystemClock.uptimeMillis()
+                    evaluateActiveWindow(packageName, candidateSubtree = null)
+                }
+                pendingSettleRunnable = settleRunnable
+                mainHandler.postDelayed(settleRunnable, DEBOUNCE_SETTLE_MS)
             }
-            pendingSettleRunnable = settleRunnable
-            mainHandler.postDelayed(settleRunnable, DEBOUNCE_SETTLE_MS)
             return
         }
 
@@ -368,7 +369,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         // -----------------------------------------------------------------
         var candidateSubtree: AccessibilityNodeInfo? = null
         var intermediateParent: AccessibilityNodeInfo? = null
-        val eventSource = if (isScrollOrContentChange) {
+        val eventSource = if (isScroll || isContentChange) {
             try { event.source } catch (_: Exception) { null }
         } else {
             null
@@ -516,7 +517,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                     cancelDwellTimer()
                     return
                 }
-                if (isInstagramHomeFeed(currentRoot)) {
+                if (!hasDedicatedFullscreenReel(currentRoot) && !detectReelContainer(currentRoot) && isInstagramHomeFeed(currentRoot)) {
                     Log.d(TAG, "Intervention aborted: user is browsing Instagram Home feed.")
                     cancelDwellTimer()
                     return
@@ -621,7 +622,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
     /**
      * Checks if a node represents a true full-screen vertical immersive Reel player.
-     * Requires at least 65% of screen height and 70% of screen width.
+     * Requires at least 50% of screen height and 50% of screen width to detect opening transitions immediately.
      * Uses sharedRect buffer on service thread to eliminate Rect heap allocation.
      */
     private fun isDedicatedFullscreenReel(node: AccessibilityNodeInfo): Boolean {
@@ -633,8 +634,8 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         val screenHeight = if (metrics.heightPixels > 0) metrics.heightPixels else 2000
         val screenWidth = if (metrics.widthPixels > 0) metrics.widthPixels else 1000
 
-        val minHeight = (screenHeight * 0.65f).toInt()
-        val minWidth = (screenWidth * 0.70f).toInt()
+        val minHeight = (screenHeight * 0.50f).toInt()
+        val minWidth = (screenWidth * 0.50f).toInt()
         return sharedRect.height() >= minHeight && sharedRect.width() >= minWidth
     }
 
@@ -837,30 +838,67 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
         // Direct self-check for targeted subtree scanning
         val rootResId = (root.viewIdResourceName ?: "").lowercase()
-        if (rootResId.contains("clips_viewer_view_pager") ||
-            rootResId.contains("clips_viewer_container") ||
-            rootResId.contains("root_clips_layout")
+        if (rootResId.contains("clips_viewer") ||
+            rootResId.contains("clips_video") ||
+            rootResId.contains("clips_item") ||
+            rootResId.contains("clips_swipe") ||
+            rootResId.contains("root_clips") ||
+            rootResId.contains("reel_viewer")
         ) {
             if (isDedicatedFullscreenReel(root)) return true
         }
 
-        val clipsPager = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_viewer_view_pager")
-        if (!clipsPager.isNullOrEmpty() && clipsPager.any { isDedicatedFullscreenReel(it) }) {
-            return true
-        }
+        val dedicatedClipsIds = listOf(
+            "com.instagram.android:id/clips_viewer_view_pager",
+            "com.instagram.android:id/clips_viewer_container",
+            "com.instagram.android:id/root_clips_layout",
+            "com.instagram.android:id/clips_video_container",
+            "com.instagram.android:id/clips_swipe_refresh_container",
+            "com.instagram.android:id/clips_item_container",
+            "com.instagram.android:id/clips_viewer",
+            "com.instagram.android:id/clips_media_component",
+            "com.instagram.android:id/clips_viewer_media_container",
+            "com.instagram.android:id/clips_action_button_container",
+            "com.instagram.android:id/clips_attached_scrubber_view",
+            "com.instagram.android:id/reel_viewer"
+        )
 
-        val viewerContainer = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_viewer_container")
-        if (!viewerContainer.isNullOrEmpty() && viewerContainer.any { isDedicatedFullscreenReel(it) }) {
-            return true
-        }
-
-        val rootClips = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/root_clips_layout")
-        if (!rootClips.isNullOrEmpty() && rootClips.any { isDedicatedFullscreenReel(it) }) {
-            return true
+        for (id in dedicatedClipsIds) {
+            val nodes = root.findAccessibilityNodeInfosByViewId(id)
+            if (!nodes.isNullOrEmpty() && nodes.any { isDedicatedFullscreenReel(it) }) {
+                return true
+            }
         }
 
         if (isInstagramReelsTabSelected(root)) {
             return true
+        }
+
+        // Fast tree-walk fallback to catch obfuscated/unnamed clips containers
+        flatNodeQueue.clear()
+        flatNodeQueue.add(root)
+        var visited = 0
+        try {
+            while (flatNodeQueue.isNotEmpty() && visited < 50) {
+                val node = flatNodeQueue.removeFirst()
+                visited++
+
+                val resId = (node.viewIdResourceName ?: "").lowercase()
+                if (resId.contains("clips_viewer") || resId.contains("clips_video") ||
+                    resId.contains("root_clips") || resId.contains("clips_swipe") ||
+                    (resId.contains("reel_viewer") && !resId.contains("story"))
+                ) {
+                    if (isDedicatedFullscreenReel(node)) {
+                        return true
+                    }
+                }
+
+                for (i in 0 until node.childCount) {
+                    node.getChild(i)?.let { flatNodeQueue.add(it) }
+                }
+            }
+        } finally {
+            flatNodeQueue.clear()
         }
 
         return false
@@ -978,7 +1016,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
      */
     private fun isInstagramHomeFeed(root: AccessibilityNodeInfo): Boolean {
         // 1. If dedicated fullscreen Reel viewer is active, user is watching a Reel (NOT feed)
-        if (hasDedicatedFullscreenReel(root)) {
+        if (hasDedicatedFullscreenReel(root) || detectReelContainer(root)) {
             return false
         }
 
@@ -1118,6 +1156,12 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             return true
         }
 
+        // --- SIGNATURE 2: Tiered Heuristic Detection (detectReelContainer) ---
+        // 9:16 Video Surface, action rail, fuzzy ID scanning
+        if (detectReelContainer(root)) {
+            return true
+        }
+
         // --- SAFEGUARD 4: Home Feed Immunity ---
         // If the user is on the Home feed scrolling/viewing regular posts, DO NOT BLOCK!
         // Allows scrolling the feed freely without getting kicked out.
@@ -1125,8 +1169,8 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             return false
         }
 
-        // --- SIGNATURE 2: Tiered Heuristic Detection (detectReelContainer) & Generic Fullscreen Reel Player ---
-        return detectReelContainer(root) || isGenericFullscreenReel(root)
+        // --- SIGNATURE 3: Generic / Lite Fullscreen Reel Player ---
+        return isGenericFullscreenReel(root)
     }
 
     private fun detectYouTubeShorts(root: AccessibilityNodeInfo): Boolean {
@@ -1232,6 +1276,13 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 val text = (node.text?.toString() ?: "").lowercase()
                 val desc = (node.contentDescription?.toString() ?: "").lowercase()
                 val className = (node.className?.toString() ?: "")
+
+                // Skip bottom navigation tab bar nodes so its icons don't trigger Tier 1/2 false positives on Home feed
+                if (resId.contains("tab_bar") || resId.contains("clips_tab") || resId.contains("feed_tab") ||
+                    resId.contains("tab_layout") || resId.contains("bottom_nav")
+                ) {
+                    continue
+                }
 
                 // Aspect Ratio & Video Surface Detection:
                 // Check node class names for SurfaceView, TextureView, or PlayerView occupying vertical 9:16 aspect ratios (1.77 ± 0.1)
