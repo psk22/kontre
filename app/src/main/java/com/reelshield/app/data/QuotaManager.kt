@@ -53,6 +53,7 @@ class QuotaManager(context: Context) {
         private const val KEY_STRICT_MODE = "key_strict_mode"
         private const val KEY_TOTAL_BLOCK = "key_total_block"
         private const val KEY_CONSUMED_HISTORY = "key_consumed_history"
+        private const val KEY_SHOW_FLOATING_COUNTER = "key_show_floating_counter"
     }
 
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
@@ -104,6 +105,22 @@ class QuotaManager(context: Context) {
     var isTotalBlockEnabled: Boolean
         get() = prefs.getBoolean(KEY_TOTAL_BLOCK, false)
         set(value) = prefs.edit().putBoolean(KEY_TOTAL_BLOCK, value).apply()
+
+    var isFloatingCounterEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SHOW_FLOATING_COUNTER, false)
+        set(value) = prefs.edit().putBoolean(KEY_SHOW_FLOATING_COUNTER, value).apply()
+
+    fun resetTodayCounts() {
+        prefs.edit()
+            .putInt(KEY_REELS_COUNT, 0)
+            .putInt(KEY_SHORTS_COUNT, 0)
+            .putInt(KEY_BLOCKED_COUNT, 0)
+            .putString(KEY_CONSUMED_HISTORY, "[]")
+            .apply()
+
+        _totalCountFlow.value = 0
+        _reelsCountFlow.value = 0
+    }
 
     // --- Daily Limit & Usage ---
     val dailyLimit: Int

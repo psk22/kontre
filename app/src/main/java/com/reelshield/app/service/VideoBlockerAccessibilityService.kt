@@ -17,6 +17,8 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import com.reelshield.app.data.QuotaManager
+import com.reelshield.app.data.local.AppDatabase
+import com.reelshield.app.data.local.DetectionEvent
 import com.reelshield.app.data.rules.AppHeuristicRule
 import com.reelshield.app.data.rules.DynamicRuleEngine
 import kotlinx.coroutines.CoroutineScope
@@ -41,6 +43,10 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
     // Dynamic Heuristic Rule Engine
     lateinit var dynamicRuleEngine: DynamicRuleEngine
+        private set
+
+    // Draggable Floating Counter Overlay Manager
+    lateinit var floatingCounterManager: FloatingCounterManager
         private set
 
     val isShortFormCurrentlyActive: Boolean
@@ -243,10 +249,41 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         instance = this
         quotaManager = QuotaManager(applicationContext)
 
+        floatingCounterManager = FloatingCounterManager(this).apply {
+            onDismissRequested = {
+                quotaManager.isFloatingCounterEnabled = false
+                mainHandler.post {
+                    android.widget.Toast.makeText(
+                        applicationContext,
+                        "Floating counter badge removed. Re-enable in Kontre app.",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+
         reelSessionTracker = ReelSessionTracker(
             serviceScope = serviceScope,
             quotaManager = quotaManager,
-            onCountUpdated = { _, _ -> },
+            onCountUpdated = { newCount, platform ->
+                serviceScope.launch(Dispatchers.IO) {
+                    try {
+                        AppDatabase.getDatabase(applicationContext).detectionEventDao().insertEvent(
+                            DetectionEvent(
+                                targetPackage = if (platform == "YouTube") PACKAGE_YOUTUBE else PACKAGE_INSTAGRAM,
+                                targetPlatform = platform,
+                                eventType = "REEL_CONSUMED",
+                                actionTaken = "COUNTED"
+                            )
+                        )
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to log consumed event to database", e)
+                    }
+                }
+                if (quotaManager.isFloatingCounterEnabled) {
+                    floatingCounterManager.showOrUpdate(newCount)
+                }
+            },
             onLimitReachedWarning = { platform ->
                 mainHandler.post {
                     try {
@@ -473,6 +510,9 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         if (::reelSessionTracker.isInitialized) {
             reelSessionTracker.onUserNavigatedAway()
         }
+        if (::floatingCounterManager.isInitialized && floatingCounterManager.isShowing) {
+            floatingCounterManager.hide()
+        }
     }
 
     /**
@@ -538,6 +578,22 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             lastInterventionTimestamp = now
 
             quotaManager.incrementBlockedCount()
+
+            serviceScope.launch(Dispatchers.IO) {
+                try {
+                    val platform = if (targetPackage == PACKAGE_YOUTUBE) "YouTube" else "Instagram"
+                    AppDatabase.getDatabase(applicationContext).detectionEventDao().insertEvent(
+                        DetectionEvent(
+                            targetPackage = targetPackage,
+                            targetPlatform = platform,
+                            eventType = "REEL_EJECTED",
+                            actionTaken = "BLOCKED"
+                        )
+                    )
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to log ejection event to database", e)
+                }
+            }
 
             Log.i(TAG, "Limit reached / Total Block: auto-ejecting from Reel/Short via GLOBAL_ACTION_BACK (Zero-Overlay).")
             performGlobalAction(GLOBAL_ACTION_BACK)
@@ -1426,6 +1482,9 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         }
         if (::reelSessionTracker.isInitialized) {
             reelSessionTracker.clearSession()
+        }
+        if (::floatingCounterManager.isInitialized) {
+            floatingCounterManager.hide()
         }
         instance = null
         serviceScope.cancel()

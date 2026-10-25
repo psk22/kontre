@@ -89,8 +89,15 @@ import com.reelshield.app.ui.theme.TextMuted
 import com.reelshield.app.ui.theme.TextPrimary
 import com.reelshield.app.ui.theme.TextSecondary
 import com.reelshield.app.ui.theme.WhisperBorder
+import androidx.compose.runtime.collectAsState
+import com.reelshield.app.data.local.AppDatabase
+import com.reelshield.app.data.local.DetectionEvent
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
 
@@ -158,6 +165,11 @@ fun DashboardScreen(quotaManager: QuotaManager) {
     var blockIg by remember { mutableStateOf(quotaManager.isInstagramBlockEnabled) }
     var blockYt by remember { mutableStateOf(quotaManager.isYouTubeBlockEnabled) }
     var totalBlock by remember { mutableStateOf(quotaManager.isTotalBlockEnabled) }
+    var showFloatingBadge by remember { mutableStateOf(quotaManager.isFloatingCounterEnabled) }
+
+    val db = remember { AppDatabase.getDatabase(context) }
+    val recentEvents by db.detectionEventDao().getRecentEvents().collectAsState(initial = emptyList())
+    val totalTrackedInDb by db.detectionEventDao().getTotalCount().collectAsState(initial = 0)
 
     var countdownText by remember { mutableStateOf(quotaManager.getTimeUntilMidnightFormatted()) }
     var isAccessibilityEnabled by remember {
@@ -375,17 +387,40 @@ fun DashboardScreen(quotaManager: QuotaManager) {
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 1.sp
                     )
-                    Box(
-                        modifier = Modifier
-                            .background(ElevatedPlumDark, RoundedCornerShape(100.dp))
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = "RESETS AT 00:00",
-                            color = FogText,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Medium
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .background(ElevatedPlumDark, RoundedCornerShape(100.dp))
+                                .clickable {
+                                    quotaManager.resetTodayCounts()
+                                    reelsCount = 0
+                                    shortsCount = 0
+                                    blockedCount = 0
+                                    timeSaved = 0
+                                    Toast.makeText(context, "Today's counts reset to 0", Toast.LENGTH_SHORT).show()
+                                }
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "RESET TODAY",
+                                color = CoralEmber,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .background(ElevatedPlumDark, RoundedCornerShape(100.dp))
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "RESETS AT 00:00",
+                                color = FogText,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
                     }
                 }
 
@@ -652,6 +687,19 @@ fun DashboardScreen(quotaManager: QuotaManager) {
                         quotaManager.isTotalBlockEnabled = it
                     }
                 )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Floating Counter Badge Toggle
+                ToggleRow(
+                    title = "Draggable Floating Reel Counter",
+                    subtitle = "Draws an interactive floating count pill over Reels/Shorts with an edge-snapping dismissal target",
+                    checked = showFloatingBadge,
+                    onCheckedChange = {
+                        showFloatingBadge = it
+                        quotaManager.isFloatingCounterEnabled = it
+                    }
+                )
             }
         }
 
@@ -702,6 +750,148 @@ fun DashboardScreen(quotaManager: QuotaManager) {
                     status = "BLOCKED",
                     description = "Opening standalone Reels/Shorts triggers instant zero-delay backward exit."
                 )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(28.dp))
+
+        // --- 6. Detection & Reel Event History (Room Database) ---
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = "EVENT HISTORY & COUNTER LOG",
+                    color = AshText,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
+                )
+                Text(
+                    text = "Room SQLite Database • $totalTrackedInDb lifetime entries",
+                    color = FogText,
+                    fontSize = 11.sp
+                )
+            }
+            if (recentEvents.isNotEmpty()) {
+                Text(
+                    text = "Clear Log",
+                    color = CoralEmber,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable {
+                            coroutineScope.launch(Dispatchers.IO) {
+                                db.detectionEventDao().clearAll()
+                            }
+                            Toast.makeText(context, "Event history cleared", Toast.LENGTH_SHORT).show()
+                        }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = ElevatedPlum),
+            border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(WhisperBorder))
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                if (recentEvents.isEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(text = "📊", fontSize = 28.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "No detection events recorded yet",
+                            color = PureWhite,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Events will appear here in real-time when reels are counted or intercepted.",
+                            color = FogText,
+                            fontSize = 12.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                } else {
+                    val timeFormatter = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
+                    recentEvents.take(6).forEachIndexed { index, event ->
+                        if (index > 0) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .background(
+                                            if (event.actionTaken == "BLOCKED") CoralEmberMuted else IrisAccent.copy(alpha = 0.2f),
+                                            CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = if (event.targetPlatform == "Instagram") "📸" else if (event.targetPlatform == "YouTube") "▶️" else "⚡",
+                                        fontSize = 14.sp
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = if (event.eventType == "REEL_CONSUMED") "${event.targetPlatform} Reel Watched" else "${event.targetPlatform} Intercepted",
+                                        color = PureWhite,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = timeFormatter.format(Date(event.timestamp)),
+                                        color = FogText,
+                                        fontSize = 11.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                            }
+
+                            val isBlocked = event.actionTaken == "BLOCKED"
+                            Box(
+                                modifier = Modifier
+                                    .background(
+                                        if (isBlocked) CoralEmberMuted else StatusGreenMuted,
+                                        RoundedCornerShape(100.dp)
+                                    )
+                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                            ) {
+                                Text(
+                                    text = event.actionTaken,
+                                    color = if (isBlocked) CoralEmber else StatusGreen,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.5.sp
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -955,6 +1145,32 @@ fun DashboardScreen(quotaManager: QuotaManager) {
             shape = RoundedCornerShape(100.dp)
         ) {
             Text(text = "Simulate Instant Reel Ejection", color = PureWhite, fontSize = 13.sp)
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Row 5b: Log Test Event to Room DB
+        Button(
+            onClick = {
+                coroutineScope.launch(Dispatchers.IO) {
+                    db.detectionEventDao().insertEvent(
+                        DetectionEvent(
+                            targetPackage = "com.instagram.android",
+                            targetPlatform = "Instagram",
+                            eventType = "REEL_CONSUMED",
+                            actionTaken = "COUNTED"
+                        )
+                    )
+                }
+                quotaManager.incrementReels()
+                reelsCount = quotaManager.reelsCount
+                Toast.makeText(context, "Inserted simulated reel event into Room DB", Toast.LENGTH_SHORT).show()
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = ElevatedPlumDark),
+            shape = RoundedCornerShape(100.dp)
+        ) {
+            Text(text = "Log Test Event to Room Database", color = PureWhite, fontSize = 13.sp)
         }
 
         Spacer(modifier = Modifier.height(10.dp))
