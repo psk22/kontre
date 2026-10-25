@@ -44,7 +44,7 @@ class QuotaManager(context: Context) {
         private const val KEY_BLOCK_YOUTUBE = "key_block_youtube"
         private const val KEY_STRICT_MODE = "key_strict_mode"
         private const val KEY_TOTAL_BLOCK = "key_total_block"
-        private const val KEY_SHOW_FLOATING_COUNTER = "key_show_floating_counter"
+        const val KEY_SHOW_FLOATING_COUNTER = "key_show_floating_counter"
     }
 
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
@@ -98,7 +98,12 @@ class QuotaManager(context: Context) {
 
     var isFloatingCounterEnabled: Boolean
         get() = prefs.getBoolean(KEY_SHOW_FLOATING_COUNTER, true)
-        set(value) = prefs.edit().putBoolean(KEY_SHOW_FLOATING_COUNTER, value).apply()
+        set(value) {
+            prefs.edit().putBoolean(KEY_SHOW_FLOATING_COUNTER, value).apply()
+            if (!value) {
+                com.reelshield.app.service.ContentTrackerService.hideOverlayIfActive()
+            }
+        }
 
     fun resetTodayCounts() {
         prefs.edit()

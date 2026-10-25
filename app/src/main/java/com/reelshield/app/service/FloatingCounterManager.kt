@@ -13,12 +13,10 @@ import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
-import android.view.View
-import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.TextView
-import kotlin.math.abs
+import com.reelshield.app.data.QuotaManager
 
 class FloatingCounterManager(private val service: AccessibilityService) {
 
@@ -42,10 +40,16 @@ class FloatingCounterManager(private val service: AccessibilityService) {
     private var currentCount = 0
     private var currentLimit = 50
 
+    // Safety watchdog to auto-clear isDragging in case ACTION_UP is lost
+    private val dragTimeoutRunnable = Runnable {
+        isDragging = false
+    }
+
     companion object {
         private const val TAG = "FloatingCounterManager"
         private const val PREF_X = "counter_x"
         private const val PREF_Y = "counter_y"
+        private const val DRAG_TIMEOUT_MS = 3000L
     }
 
     private fun buildLayoutParams(): WindowManager.LayoutParams {
@@ -128,6 +132,9 @@ class FloatingCounterManager(private val service: AccessibilityService) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     isDragging = true
+                    mainHandler.removeCallbacks(dragTimeoutRunnable)
+                    mainHandler.postDelayed(dragTimeoutRunnable, DRAG_TIMEOUT_MS)
+
                     initialTouchX = event.rawX
                     initialTouchY = event.rawY
                     initialParamX = lp.x
@@ -135,6 +142,9 @@ class FloatingCounterManager(private val service: AccessibilityService) {
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
+                    mainHandler.removeCallbacks(dragTimeoutRunnable)
+                    mainHandler.postDelayed(dragTimeoutRunnable, DRAG_TIMEOUT_MS)
+
                     val dx = (event.rawX - initialTouchX).toInt()
                     val dy = (event.rawY - initialTouchY).toInt()
 
@@ -157,7 +167,8 @@ class FloatingCounterManager(private val service: AccessibilityService) {
                     }
                     true
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_OUTSIDE -> {
+                    mainHandler.removeCallbacks(dragTimeoutRunnable)
                     isDragging = false
                     // Persist new coordinates permanently
                     prefs.edit()
@@ -174,10 +185,21 @@ class FloatingCounterManager(private val service: AccessibilityService) {
     }
 
     fun showOrUpdate(count: Int, limit: Int = 50) {
+        // Enforce toggle state: if disabled, immediately hide and abort
+        if (!QuotaManager(service).isFloatingCounterEnabled) {
+            forceHide()
+            return
+        }
+
         currentCount = count
         currentLimit = limit
         mainHandler.post {
             try {
+                if (!QuotaManager(service).isFloatingCounterEnabled) {
+                    forceHide()
+                    return@post
+                }
+
                 val container = getOrCreateOverlayView()
                 updateText(count, limit)
 
@@ -195,7 +217,6 @@ class FloatingCounterManager(private val service: AccessibilityService) {
                             isShowing = true
                             Log.i(TAG, "Floating counter overlay attached to window.")
                         } catch (e: IllegalStateException) {
-                            // View is already attached
                             isShowing = true
                         } catch (e: Exception) {
                             Log.w(TAG, "Error adding overlay view: ${e.message}")
@@ -213,7 +234,7 @@ class FloatingCounterManager(private val service: AccessibilityService) {
     fun hide() {
         mainHandler.post {
             try {
-                // If user is currently touching/dragging, do not dismiss from under their finger
+                // If user is actively dragging, wait for drag to complete before hiding
                 if (isDragging) {
                     return@post
                 }
@@ -237,8 +258,34 @@ class FloatingCounterManager(private val service: AccessibilityService) {
         }
     }
 
+    fun forceHide() {
+        mainHandler.post {
+            try {
+                mainHandler.removeCallbacks(dragTimeoutRunnable)
+                isDragging = false
+
+                val container = overlayContainer
+                if (container != null && container.isAttachedToWindow) {
+                    try {
+                        windowManager.removeViewImmediate(container)
+                    } catch (e: Exception) {
+                        try {
+                            windowManager.removeView(container)
+                        } catch (e2: Exception) {
+                            Log.w(TAG, "forceHide removeView error: ${e2.message}")
+                        }
+                    }
+                }
+                isShowing = false
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in forceHide", e)
+            }
+        }
+    }
+
     fun destroy() {
         mainHandler.post {
+            mainHandler.removeCallbacks(dragTimeoutRunnable)
             isDragging = false
             val container = overlayContainer
             if (container != null && container.isAttachedToWindow) {

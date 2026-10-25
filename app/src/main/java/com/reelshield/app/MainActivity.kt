@@ -692,6 +692,9 @@ fun DashboardScreen(quotaManager: QuotaManager) {
                     onCheckedChange = {
                         showFloatingBadge = it
                         quotaManager.isFloatingCounterEnabled = it
+                        if (!it) {
+                            com.reelshield.app.service.ContentTrackerService.hideOverlayIfActive()
+                        }
                     }
                 )
             }
