@@ -65,7 +65,9 @@ import com.reelshield.app.data.rules.DynamicRuleEngine
 import com.reelshield.app.service.ResuscitationWorker
 import com.reelshield.app.service.WatcherForegroundService
 import com.reelshield.app.service.VideoBlockerAccessibilityService
+import com.reelshield.app.receiver.KontreDeviceAdminReceiver
 import com.reelshield.app.util.BatteryOptimizationHelper
+import com.reelshield.app.util.UsageStatsFallbackHelper
 import com.reelshield.app.ui.theme.AshText
 import com.reelshield.app.ui.theme.AubergineCanvas
 import com.reelshield.app.ui.theme.BorderColor
@@ -161,6 +163,12 @@ fun DashboardScreen(quotaManager: QuotaManager) {
     var isAccessibilityEnabled by remember {
         mutableStateOf(isAccessibilityServiceActive(context))
     }
+    var isUsageAccessGranted by remember {
+        mutableStateOf(UsageStatsFallbackHelper.hasUsageStatsPermission(context))
+    }
+    var isDeviceAdminActive by remember {
+        mutableStateOf(KontreDeviceAdminReceiver.isDeviceAdminActive(context))
+    }
     var isRestrictedBlocked by remember {
         mutableStateOf(isRestrictedSettingsBlocked(context))
     }
@@ -192,6 +200,8 @@ fun DashboardScreen(quotaManager: QuotaManager) {
             blockedCount = quotaManager.blockedTodayCount
             timeSaved = quotaManager.timeSavedMinutes
             isAccessibilityEnabled = isAccessibilityServiceActive(context)
+            isUsageAccessGranted = UsageStatsFallbackHelper.hasUsageStatsPermission(context)
+            isDeviceAdminActive = KontreDeviceAdminReceiver.isDeviceAdminActive(context)
             isRestrictedBlocked = isRestrictedSettingsBlocked(context)
             isBatteryOptIgnored = BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)
             delay(1000L)
@@ -523,9 +533,23 @@ fun DashboardScreen(quotaManager: QuotaManager) {
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // 2. Battery Optimization Exemption Card
+        // 2. Usage Access Fallback Card
         PermissionWizardCard(
             stepNumber = "2",
+            title = "Usage Access (Redundant Fallback)",
+            description = "Redundant fallback: if Accessibility is killed by OEM deep sleep or revoked, UsageStats detects when Instagram or YouTube is foregrounded and launches the block screen.",
+            isGranted = isUsageAccessGranted,
+            actionLabel = "Grant Usage Access",
+            onAction = {
+                UsageStatsFallbackHelper.openUsageAccessSettings(context)
+            }
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // 3. Battery Optimization Exemption Card
+        PermissionWizardCard(
+            stepNumber = "3",
             title = "Battery Optimization Exemption",
             description = "Prevents aggressive OEM task killers (One UI, HyperOS, ColorOS) from sleeping the focus monitor.",
             isGranted = isBatteryOptIgnored,
@@ -553,6 +577,24 @@ fun DashboardScreen(quotaManager: QuotaManager) {
                 )
             }
         }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // 4. Device Administrator Protection Card
+        PermissionWizardCard(
+            stepNumber = "4",
+            title = "Device Administrator Protection",
+            description = "Provides high-level anti-kill protection against aggressive OEM background process killers (One UI, HyperOS, ColorOS).",
+            isGranted = isDeviceAdminActive,
+            actionLabel = "Enable Device Admin",
+            onAction = {
+                try {
+                    context.startActivity(KontreDeviceAdminReceiver.createAddDeviceAdminIntent(context))
+                } catch (e: Exception) {
+                    android.util.Log.e("MainActivity", "Failed to launch Device Admin intent", e)
+                }
+            }
+        )
 
         Spacer(modifier = Modifier.height(28.dp))
 

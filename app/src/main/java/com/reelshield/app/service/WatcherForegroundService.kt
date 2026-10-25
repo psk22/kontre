@@ -22,7 +22,10 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.reelshield.app.MainActivity
 import com.reelshield.app.R
+import com.reelshield.app.data.QuotaManager
+import com.reelshield.app.ui.BlockActivity
 import com.reelshield.app.util.BatteryOptimizationHelper
+import com.reelshield.app.util.UsageStatsFallbackHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -44,6 +47,8 @@ import kotlinx.coroutines.launch
  * 3. Detects if accessibility service was killed by OEM deep sleep or disabled; fires a local
  *    high-priority reminder notification directing the user to tap and re-enable.
  * 4. Bound to VideoBlockerAccessibilityService for reciprocal lifecycle co-monitoring.
+ * 5. Redundant UsageStatsManager Fallback: If accessibility service is dead or revoked, monitors
+ *    foreground package transitions and launches BlockActivity.
  */
 open class WatcherForegroundService : Service() {
 
@@ -54,6 +59,8 @@ open class WatcherForegroundService : Service() {
     private val binder = LocalBinder()
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var watchdogJob: Job? = null
+    private var usageStatsFallbackJob: Job? = null
+    private var lastFallbackBlockTimestamp = 0L
 
     // Heartbeat & Watchdog Timestamps
     private var lastAccessibilityPongTimestamp = 0L
@@ -179,7 +186,10 @@ open class WatcherForegroundService : Service() {
         // Start 60-second periodic watchdog heartbeat
         startWatchdogHeartbeat()
 
-        Log.i(TAG, "WatcherForegroundService created with Dual-Service Watchdog Heartbeat (60s).")
+        // Start redundant UsageStats Fallback monitor
+        startUsageStatsFallbackMonitor()
+
+        Log.i(TAG, "WatcherForegroundService created with Dual-Service Watchdog Heartbeat (60s) & UsageStats Fallback.")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -247,6 +257,91 @@ open class WatcherForegroundService : Service() {
                     delay(WATCHDOG_INTERVAL_MS)
                 }
             }
+        }
+    }
+
+    /**
+     * Redundant UsageStatsManager Fallback Monitor:
+     * If AccessibilityService has been revoked, killed by OEM deep sleep, or disabled in settings,
+     * this monitor queries foreground activity changes to catch Instagram / YouTube launches
+     * and trigger the fallback BlockActivity.
+     */
+    private fun startUsageStatsFallbackMonitor() {
+        if (usageStatsFallbackJob == null || usageStatsFallbackJob?.isActive != true) {
+            usageStatsFallbackJob = serviceScope.launch {
+                while (isActive) {
+                    val isAccessibilityActive = isAccessibilityServiceEnabled(this@WatcherForegroundService) &&
+                            VideoBlockerAccessibilityService.instance != null
+
+                    // Run fallback detection only when primary AccessibilityService is inactive & permission granted
+                    if (!isAccessibilityActive && UsageStatsFallbackHelper.hasUsageStatsPermission(this@WatcherForegroundService)) {
+                        checkUsageStatsFallback()
+                    }
+                    delay(1000L)
+                }
+            }
+        }
+    }
+
+    private fun checkUsageStatsFallback() {
+        val fgPkg = UsageStatsFallbackHelper.getForegroundPackage(this) ?: return
+        if (fgPkg == packageName) return // Ignore Kontre itself
+
+        val quotaManager = QuotaManager(this)
+        val isTargetApp = (fgPkg == VideoBlockerAccessibilityService.PACKAGE_INSTAGRAM ||
+                fgPkg == VideoBlockerAccessibilityService.PACKAGE_INSTAGRAM_LITE) && quotaManager.isInstagramBlockEnabled ||
+                (fgPkg == VideoBlockerAccessibilityService.PACKAGE_YOUTUBE && quotaManager.isYouTubeBlockEnabled)
+
+        if (isTargetApp) {
+            val isLimitReached = quotaManager.isLimitReached
+            val isTotalBlock = quotaManager.isTotalBlockEnabled
+
+            if (isLimitReached || isTotalBlock) {
+                val now = System.currentTimeMillis()
+                if (now - lastFallbackBlockTimestamp > 2500L) {
+                    lastFallbackBlockTimestamp = now
+                    Log.w(
+                        TAG,
+                        "UsageStats Fallback: Monitored app ($fgPkg) in foreground with quota exhausted while Accessibility is DEAD! Triggering BlockActivity."
+                    )
+                    quotaManager.incrementBlockedCount()
+                    triggerFallbackBlockIntervention(fgPkg)
+                }
+            }
+        }
+    }
+
+    private fun triggerFallbackBlockIntervention(fgPkg: String) {
+        val notificationManager = getSystemService(NotificationManager::class.java)
+
+        val fullScreenIntent = Intent(this, BlockActivity::class.java).apply {
+            putExtra(BlockActivity.EXTRA_BLOCKED_PACKAGE, fgPkg)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+
+        val fullScreenPendingIntent = PendingIntent.getActivity(
+            this,
+            201,
+            fullScreenIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val notification = NotificationCompat.Builder(this, CHANNEL_ALERT_ID)
+            .setContentTitle("⚠️ Focus Shield Active")
+            .setContentText("Short-form limits reached. Focus shield engaged.")
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setFullScreenIntent(fullScreenPendingIntent, true)
+            .setAutoCancel(true)
+            .build()
+
+        notificationManager?.notify(ALERT_NOTIFICATION_ID, notification)
+
+        try {
+            startActivity(fullScreenIntent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed direct startActivity in fallback", e)
         }
     }
 
@@ -454,6 +549,7 @@ open class WatcherForegroundService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         watchdogJob?.cancel()
+        usageStatsFallbackJob?.cancel()
         serviceScope.cancel()
         unregisterPongReceiver()
         instance = null
