@@ -5,18 +5,10 @@ import android.content.SharedPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import org.json.JSONArray
-import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
-
-data class ReelConsumedMetadata(
-    val hash: String,
-    val platform: String,
-    val timestamp: Long
-)
 
 class QuotaManager(context: Context) {
 
@@ -52,7 +44,6 @@ class QuotaManager(context: Context) {
         private const val KEY_BLOCK_YOUTUBE = "key_block_youtube"
         private const val KEY_STRICT_MODE = "key_strict_mode"
         private const val KEY_TOTAL_BLOCK = "key_total_block"
-        private const val KEY_CONSUMED_HISTORY = "key_consumed_history"
         private const val KEY_SHOW_FLOATING_COUNTER = "key_show_floating_counter"
     }
 
@@ -81,7 +72,6 @@ class QuotaManager(context: Context) {
                 .putInt(KEY_REELS_COUNT, 0)
                 .putInt(KEY_SHORTS_COUNT, 0)
                 .putInt(KEY_BLOCKED_COUNT, 0)
-                .putString(KEY_CONSUMED_HISTORY, "[]")
                 .apply()
 
             _totalCountFlow.value = 0
@@ -107,7 +97,7 @@ class QuotaManager(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_TOTAL_BLOCK, value).apply()
 
     var isFloatingCounterEnabled: Boolean
-        get() = prefs.getBoolean(KEY_SHOW_FLOATING_COUNTER, false)
+        get() = prefs.getBoolean(KEY_SHOW_FLOATING_COUNTER, true)
         set(value) = prefs.edit().putBoolean(KEY_SHOW_FLOATING_COUNTER, value).apply()
 
     fun resetTodayCounts() {
@@ -115,7 +105,6 @@ class QuotaManager(context: Context) {
             .putInt(KEY_REELS_COUNT, 0)
             .putInt(KEY_SHORTS_COUNT, 0)
             .putInt(KEY_BLOCKED_COUNT, 0)
-            .putString(KEY_CONSUMED_HISTORY, "[]")
             .apply()
 
         _totalCountFlow.value = 0
@@ -192,43 +181,9 @@ class QuotaManager(context: Context) {
     @Synchronized
     fun recordConsumedReel(hash: String, platform: String, timestamp: Long = System.currentTimeMillis()): Int {
         checkAndResetDaily()
-        val newTotal = when (platform) {
+        return when (platform) {
             "YouTube" -> incrementShorts()
             else -> incrementReels()
-        }
-
-        saveHistoryRecord(ReelConsumedMetadata(hash, platform, timestamp))
-        return newTotal
-    }
-
-    private fun saveHistoryRecord(item: ReelConsumedMetadata) {
-        try {
-            val historyJson = prefs.getString(KEY_CONSUMED_HISTORY, "[]") ?: "[]"
-            val array = JSONArray(historyJson)
-
-            val obj = JSONObject().apply {
-                put("hash", item.hash)
-                put("platform", item.platform)
-                put("timestamp", item.timestamp)
-            }
-
-            array.put(obj)
-
-            // Keep rolling history at max 50 entries
-            val trimmedArray = if (array.length() > 50) {
-                val newArr = JSONArray()
-                val start = array.length() - 50
-                for (i in start until array.length()) {
-                    newArr.put(array.getJSONObject(i))
-                }
-                newArr
-            } else {
-                array
-            }
-
-            prefs.edit().putString(KEY_CONSUMED_HISTORY, trimmedArray.toString()).apply()
-        } catch (e: Exception) {
-            android.util.Log.e("QuotaManager", "Failed to save history record", e)
         }
     }
 

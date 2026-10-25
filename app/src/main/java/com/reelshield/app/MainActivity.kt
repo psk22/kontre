@@ -64,7 +64,6 @@ import com.reelshield.app.data.QuotaManager
 import com.reelshield.app.data.rules.DynamicRuleEngine
 import com.reelshield.app.service.ResuscitationWorker
 import com.reelshield.app.service.WatcherForegroundService
-import com.reelshield.app.service.VideoBlockerAccessibilityService
 import com.reelshield.app.receiver.KontreDeviceAdminReceiver
 import com.reelshield.app.util.BatteryOptimizationHelper
 import com.reelshield.app.util.UsageStatsFallbackHelper
@@ -72,11 +71,7 @@ import com.reelshield.app.ui.theme.AshText
 import com.reelshield.app.ui.theme.AubergineCanvas
 import com.reelshield.app.ui.theme.BorderColor
 import com.reelshield.app.ui.theme.CoralEmber
-import com.reelshield.app.ui.theme.CoralEmberGlow
 import com.reelshield.app.ui.theme.CoralEmberMuted
-import com.reelshield.app.ui.theme.DarkBackground
-import com.reelshield.app.ui.theme.DarkSurface
-import com.reelshield.app.ui.theme.DarkSurfaceVariant
 import com.reelshield.app.ui.theme.ElevatedPlum
 import com.reelshield.app.ui.theme.ElevatedPlumDark
 import com.reelshield.app.ui.theme.FogText
@@ -85,23 +80,13 @@ import com.reelshield.app.ui.theme.KontreTheme
 import com.reelshield.app.ui.theme.PureWhite
 import com.reelshield.app.ui.theme.StatusGreen
 import com.reelshield.app.ui.theme.StatusGreenMuted
-import com.reelshield.app.ui.theme.TextMuted
-import com.reelshield.app.ui.theme.TextPrimary
-import com.reelshield.app.ui.theme.TextSecondary
 import com.reelshield.app.ui.theme.WhisperBorder
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.reelshield.app.data.local.AppDatabase
-import com.reelshield.app.data.local.DetectionEvent
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 class MainActivity : ComponentActivity() {
 
@@ -170,10 +155,6 @@ fun DashboardScreen(quotaManager: QuotaManager) {
     var blockYt by remember { mutableStateOf(quotaManager.isYouTubeBlockEnabled) }
     var totalBlock by remember { mutableStateOf(quotaManager.isTotalBlockEnabled) }
     var showFloatingBadge by remember { mutableStateOf(quotaManager.isFloatingCounterEnabled) }
-
-    val db = remember { AppDatabase.getDatabase(context) }
-    val recentEvents by db.detectionEventDao().getRecentEvents().collectAsState(initial = emptyList())
-    val totalTrackedInDb by db.detectionEventDao().getTotalCount().collectAsState(initial = 0)
 
     var countdownText by remember { mutableStateOf(quotaManager.getTimeUntilMidnightFormatted()) }
     var isAccessibilityEnabled by remember {
@@ -705,8 +686,8 @@ fun DashboardScreen(quotaManager: QuotaManager) {
 
                 // Floating Counter Badge Toggle
                 ToggleRow(
-                    title = "Draggable Floating Reel Counter",
-                    subtitle = "Draws an interactive floating count pill over Reels/Shorts with an edge-snapping dismissal target",
+                    title = "Floating Reel Counter",
+                    subtitle = "Shows a compact count pill (e.g. 3/50) over Reels & Shorts. Toggle off here to hide it.",
                     checked = showFloatingBadge,
                     onCheckedChange = {
                         showFloatingBadge = it
@@ -716,199 +697,10 @@ fun DashboardScreen(quotaManager: QuotaManager) {
             }
         }
 
-        Spacer(modifier = Modifier.height(28.dp))
-
-        // --- 6. Protection Scope & Immunities ---
-        Text(
-            text = "PROTECTION SCOPE & IMMUNITIES",
-            color = AshText,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = ElevatedPlum),
-            border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(WhisperBorder))
-        ) {
-            Column(modifier = Modifier.padding(20.dp)) {
-                ScopeItem(
-                    icon = "📸",
-                    title = "Stories & Shared Reels in Stories",
-                    status = "IMMUNE",
-                    description = "Watch friends' stories with zero interruptions, even if a Reel is shared in the story."
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                ScopeItem(
-                    icon = "💬",
-                    title = "Direct Messages & Chats",
-                    status = "IMMUNE",
-                    description = "Primary, General, Requests, and active typing are 100% protected."
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                ScopeItem(
-                    icon = "📰",
-                    title = "Home Feed & Photos",
-                    status = "IMMUNE",
-                    description = "Scroll posts, captions, and in-feed media without accidental ejection."
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                ScopeItem(
-                    icon = "⚡",
-                    title = "Dedicated Reels & Shorts",
-                    status = "BLOCKED",
-                    description = "Opening standalone Reels/Shorts triggers instant zero-delay backward exit."
-                )
-            }
-        }
 
         Spacer(modifier = Modifier.height(28.dp))
 
-        // --- 6. Detection & Reel Event History (Room Database) ---
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text(
-                    text = "EVENT HISTORY & COUNTER LOG",
-                    color = AshText,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp
-                )
-                Text(
-                    text = "Room SQLite Database • $totalTrackedInDb lifetime entries",
-                    color = FogText,
-                    fontSize = 11.sp
-                )
-            }
-            if (recentEvents.isNotEmpty()) {
-                Text(
-                    text = "Clear Log",
-                    color = CoralEmber,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .clickable {
-                            coroutineScope.launch(Dispatchers.IO) {
-                                db.detectionEventDao().clearAll()
-                            }
-                            Toast.makeText(context, "Event history cleared", Toast.LENGTH_SHORT).show()
-                        }
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                )
-            }
-        }
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = ElevatedPlum),
-            border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(WhisperBorder))
-        ) {
-            Column(modifier = Modifier.padding(20.dp)) {
-                if (recentEvents.isEmpty()) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(text = "📊", fontSize = 28.sp)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "No detection events recorded yet",
-                            color = PureWhite,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Events will appear here in real-time when reels are counted or intercepted.",
-                            color = FogText,
-                            fontSize = 12.sp,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
-                    }
-                } else {
-                    val timeFormatter = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
-                    recentEvents.take(6).forEachIndexed { index, event ->
-                        if (index > 0) {
-                            Spacer(modifier = Modifier.height(12.dp))
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                modifier = Modifier.weight(1f),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(34.dp)
-                                        .background(
-                                            if (event.actionTaken == "BLOCKED") CoralEmberMuted else IrisAccent.copy(alpha = 0.2f),
-                                            CircleShape
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = if (event.targetPlatform == "Instagram") "📸" else if (event.targetPlatform == "YouTube") "▶️" else "⚡",
-                                        fontSize = 14.sp
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text(
-                                        text = if (event.eventType == "REEL_CONSUMED") "${event.targetPlatform} Reel Watched" else "${event.targetPlatform} Intercepted",
-                                        color = PureWhite,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Text(
-                                        text = timeFormatter.format(Date(event.timestamp)),
-                                        color = FogText,
-                                        fontSize = 11.sp,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
-                            }
-
-                            val isBlocked = event.actionTaken == "BLOCKED"
-                            Box(
-                                modifier = Modifier
-                                    .background(
-                                        if (isBlocked) CoralEmberMuted else StatusGreenMuted,
-                                        RoundedCornerShape(100.dp)
-                                    )
-                                    .padding(horizontal = 8.dp, vertical = 3.dp)
-                            ) {
-                                Text(
-                                    text = event.actionTaken,
-                                    color = if (isBlocked) CoralEmber else StatusGreen,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 0.5.sp
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(28.dp))
 
         // --- 7. Dynamic Anti-Obfuscation Rule Engine ---
         Text(
@@ -1019,198 +811,6 @@ fun DashboardScreen(quotaManager: QuotaManager) {
             }
         }
 
-        Spacer(modifier = Modifier.height(28.dp))
-
-        // --- 8. Testing & Simulation Controls (Rich Lab) ---
-        Text(
-            text = "TESTING & SIMULATION LAB",
-            color = AshText,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Row 1: Quick Increments
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Button(
-                onClick = {
-                    quotaManager.incrementReels()
-                    reelsCount = quotaManager.reelsCount
-                    Toast.makeText(context, "Logged +1 Reel (${reelsCount + shortsCount}/$dailyLimit)", Toast.LENGTH_SHORT).show()
-                },
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = ElevatedPlumDark),
-                shape = RoundedCornerShape(100.dp)
-            ) {
-                Text(text = "+1 Reel", color = PureWhite, fontSize = 13.sp)
-            }
-
-            Button(
-                onClick = {
-                    quotaManager.incrementShorts()
-                    shortsCount = quotaManager.shortsCount
-                    Toast.makeText(context, "Logged +1 Short (${reelsCount + shortsCount}/$dailyLimit)", Toast.LENGTH_SHORT).show()
-                },
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = ElevatedPlumDark),
-                shape = RoundedCornerShape(100.dp)
-            ) {
-                Text(text = "+1 Short", color = PureWhite, fontSize = 13.sp)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Row 2: Milestone Presets (25 & 40)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Button(
-                onClick = {
-                    val prefs = context.getSharedPreferences("kontre_prefs", Context.MODE_PRIVATE)
-                    prefs.edit().putInt("key_reels_count", 25).putInt("key_shorts_count", 0).apply()
-                    reelsCount = 25
-                    shortsCount = 0
-                    Toast.makeText(context, "Set to 25/50 (Halfway mark)", Toast.LENGTH_SHORT).show()
-                },
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = ElevatedPlumDark),
-                shape = RoundedCornerShape(100.dp)
-            ) {
-                Text(text = "Set to 25/50", color = PureWhite, fontSize = 13.sp)
-            }
-
-            Button(
-                onClick = {
-                    val prefs = context.getSharedPreferences("kontre_prefs", Context.MODE_PRIVATE)
-                    prefs.edit().putInt("key_reels_count", 40).putInt("key_shorts_count", 0).apply()
-                    reelsCount = 40
-                    shortsCount = 0
-                    Toast.makeText(context, "Set to 40/50 (Warning zone)", Toast.LENGTH_SHORT).show()
-                },
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = ElevatedPlumDark),
-                shape = RoundedCornerShape(100.dp)
-            ) {
-                Text(text = "Set to 40/50", color = CoralEmber, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Row 3: Lock Boundaries (49 & 50)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Button(
-                onClick = {
-                    val prefs = context.getSharedPreferences("kontre_prefs", Context.MODE_PRIVATE)
-                    prefs.edit().putInt("key_reels_count", 49).putInt("key_shorts_count", 0).apply()
-                    reelsCount = 49
-                    shortsCount = 0
-                    Toast.makeText(context, "Set to 49/50 (1 video until lock)", Toast.LENGTH_SHORT).show()
-                },
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = ElevatedPlumDark),
-                shape = RoundedCornerShape(100.dp)
-            ) {
-                Text(text = "Set to 49/50", color = PureWhite, fontSize = 13.sp)
-            }
-
-            Button(
-                onClick = {
-                    val prefs = context.getSharedPreferences("kontre_prefs", Context.MODE_PRIVATE)
-                    prefs.edit().putInt("key_reels_count", 50).putInt("key_shorts_count", 0).apply()
-                    reelsCount = 50
-                    shortsCount = 0
-                    Toast.makeText(context, "Set to 50/50 (Lock active)", Toast.LENGTH_SHORT).show()
-                },
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = CoralEmber),
-                shape = RoundedCornerShape(100.dp)
-            ) {
-                Text(text = "Lock 50/50 Now", color = PureWhite, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-
-        // Row 5: Manual Ejection Test
-        Button(
-            onClick = {
-                val ejected = VideoBlockerAccessibilityService.testEjectAction()
-                if (ejected) {
-                    Toast.makeText(context, "Executed zero-overlay backward ejection!", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(context, "Enable Kontre Accessibility Service first in Step 1", Toast.LENGTH_LONG).show()
-                }
-            },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = ElevatedPlumDark),
-            shape = RoundedCornerShape(100.dp)
-        ) {
-            Text(text = "Simulate Instant Reel Ejection", color = PureWhite, fontSize = 13.sp)
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Row 5b: Log Test Event to Room DB
-        Button(
-            onClick = {
-                coroutineScope.launch(Dispatchers.IO) {
-                    db.detectionEventDao().insertEvent(
-                        DetectionEvent(
-                            targetPackage = "com.instagram.android",
-                            targetPlatform = "Instagram",
-                            eventType = "REEL_CONSUMED",
-                            actionTaken = "COUNTED"
-                        )
-                    )
-                }
-                quotaManager.incrementReels()
-                reelsCount = quotaManager.reelsCount
-                Toast.makeText(context, "Inserted simulated reel event into Room DB", Toast.LENGTH_SHORT).show()
-            },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = ElevatedPlumDark),
-            shape = RoundedCornerShape(100.dp)
-        ) {
-            Text(text = "Log Test Event to Room Database", color = PureWhite, fontSize = 13.sp)
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Row 6: Reset All Counters
-        OutlinedButton(
-            onClick = {
-                val prefs = context.getSharedPreferences("kontre_prefs", Context.MODE_PRIVATE)
-                prefs.edit()
-                    .putInt("key_reels_count", 0)
-                    .putInt("key_shorts_count", 0)
-                    .putInt("key_blocked_count", 0)
-                    .apply()
-                reelsCount = 0
-                shortsCount = 0
-                blockedCount = 0
-                timeSaved = 0
-                Toast.makeText(context, "All counters reset to 0/50", Toast.LENGTH_SHORT).show()
-            },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(100.dp),
-            border = ButtonDefaults.outlinedButtonBorder.copy(brush = SolidColor(WhisperBorder))
-        ) {
-            Text(text = "Reset All Counters to 0/50", color = AshText, fontSize = 13.sp)
-        }
-
-        Spacer(modifier = Modifier.height(28.dp))
     }
 }
 
@@ -1332,62 +932,6 @@ fun PermissionWizardCard(
     }
 }
 
-@Composable
-fun ScopeItem(
-    icon: String,
-    title: String,
-    status: String,
-    description: String
-) {
-    val isImmune = status == "IMMUNE"
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.Top
-    ) {
-        Text(
-            text = icon,
-            fontSize = 18.sp,
-            modifier = Modifier.padding(end = 12.dp, top = 2.dp)
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = title,
-                    color = PureWhite,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Box(
-                    modifier = Modifier
-                        .background(
-                            if (isImmune) IrisAccent.copy(alpha = 0.2f) else CoralEmberMuted,
-                            RoundedCornerShape(100.dp)
-                        )
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                ) {
-                    Text(
-                        text = status,
-                        color = if (isImmune) AshText else CoralEmber,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.5.sp
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = description,
-                color = FogText,
-                fontSize = 11.sp,
-                lineHeight = 15.sp
-            )
-        }
-    }
-}
 
 private fun isAccessibilityServiceActive(context: Context): Boolean {
     val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager ?: return false

@@ -21,6 +21,7 @@ Unlike aggressive app blockers that shut down Instagram or YouTube entirely, Kon
    - [5.6 Active Typing & IME Software Keyboard Immunity](#56-active-typing--ime-software-keyboard-immunity)
    - [5.7 Samsung One UI & System Launcher Immunity](#57-samsung-one-ui--system-launcher-immunity)
    - [5.8 Instagram Stories & Shared Reels in Stories Immunity](#58-instagram-stories--shared-reels-in-stories-immunity)
+   - [5.9 Tap-from-Feed Interception & Priority Resolution](#59-tap-from-feed-interception--priority-resolution)
 6. [QA & Verification Test Matrix](#6-qa--verification-test-matrix)
 7. [Build, Deployment & Shell Commands Guide](#7-build-deployment--shell-commands-guide)
 
@@ -207,6 +208,17 @@ The detection system inside [`VideoBlockerAccessibilityService.kt`](file:///c:/A
   1. Implemented dedicated `isInstagramStory(root: AccessibilityNodeInfo): Boolean` inspecting Story progress bars (`story_progress`, `stories_progress_bar`, `segment_progress_bar`, `reel_viewer_progress_bar`), story headers (`reel_viewer_header`, `reel_viewer_title`), and story reply composers.
   2. Guarded `hasDedicatedFullscreenReel` so that if `isInstagramStory(root)` is true, it immediately returns `false`.
   3. Added `isInstagramStory` safeguard to `detectInstagramReels`, dwell abortion, and `triggerIntervention`.
+
+### 5.9 Tap-from-Feed Interception & Priority Resolution
+- **Problem**: When a user was browsing the Home screen, scrolling through normal posts worked properly, but tapping on an in-feed Reel opened the full-screen Reel viewer without triggering a block.
+- **Root Cause**:
+  1. `isInstagramHomeFeed` checked `isInstagramHomeTabSelected(root)`. Because the user originated from the Home tab, the underlying tab bar retained `feed_tab.isSelected == true`, causing `isInstagramHomeFeed` to return `true`.
+  2. In `detectInstagramReels`, `isInstagramHomeFeed` was checked *before* `isDedicatedReelViewerActive`, short-circuiting to `false` and treating the fullscreen Reel as ordinary Home feed browsing.
+  3. `isDedicatedReelViewerActive` required `isVisibleToUser && isDedicatedFullscreenReel` specifically on `clips_viewer_view_pager`, which failed if container layouts (`clips_viewer_container`, `root_clips_layout`) or ViewPager2 reported empty bounds in screen.
+- **Solution**:
+  1. **Strict Priority Inversion**: In `detectInstagramReels`, `isDedicatedReelViewerActive(root)` is evaluated **before** `isInstagramHomeFeed(root)`. If a dedicated Reel viewer is open, Home feed immunity is completely revoked.
+  2. **Multi-Container & Back-Button Detection**: Expanded `isDedicatedReelViewerActive` to match `clips_viewer_view_pager`, `clips_viewer_container`, `root_clips_layout`, `clips_author_name`, and top-left Back button (`action_bar_button_back`) present alongside Clips media. (The Home feed itself has an Instagram logo and DM icon at the top, never a Back button).
+  3. **Guarded Intervention**: `triggerIntervention()` checks `!isDedicatedReelViewerActive(currentRoot)` before honoring Home feed or Profile abort rules, ensuring tapped Reels are immediately ejected.
 
 ---
 
