@@ -4,12 +4,4 @@
         <item name="android:navigationBarColor">@color/aubergine_canvas</item>
         <item name="android:windowBackground">@color/aubergine_canvas</item>
     </style>
-
-    <style name="Theme.Kontre.Overlay" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowIsTranslucent">true</item>
-        <item name="android:windowBackground">@android:color/transparent</item>
-        <item name="android:windowAnimationStyle">@android:style/Animation.Translucent</item>
-        <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:navigationBarColor">@color/aubergine_canvas</item>
-    </style>
 </resources>

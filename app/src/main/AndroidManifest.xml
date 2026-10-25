@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -33,13 +32,6 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name=".ui.BlockOverlayActivity"
-            android:exported="false"
-            android:launchMode="singleTop"
-            android:excludeFromRecents="true"
-            android:theme="@style/Theme.Kontre.Overlay" />
-
         <!-- Sticky Foreground Service for lifecycle stability & OOM protection -->
         <service
             android:name=".service.WatcherForegroundService"
@@ -58,11 +50,6 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Monitors short-form video usage to enforce daily digital wellbeing limits" />
         </service>
-
-        <!-- System Alert Window Overlay Service -->
-        <service
-            android:name=".service.BlockingOverlayService"
-            android:exported="false" />
 
         <!-- Primary Accessibility Service -->
         <service

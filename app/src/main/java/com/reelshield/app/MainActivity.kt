@@ -161,9 +161,6 @@ fun DashboardScreen(quotaManager: QuotaManager) {
     var isAccessibilityEnabled by remember {
         mutableStateOf(isAccessibilityServiceActive(context))
     }
-    var isOverlayGranted by remember {
-        mutableStateOf(Settings.canDrawOverlays(context))
-    }
     var isRestrictedBlocked by remember {
         mutableStateOf(isRestrictedSettingsBlocked(context))
     }
@@ -195,7 +192,6 @@ fun DashboardScreen(quotaManager: QuotaManager) {
             blockedCount = quotaManager.blockedTodayCount
             timeSaved = quotaManager.timeSavedMinutes
             isAccessibilityEnabled = isAccessibilityServiceActive(context)
-            isOverlayGranted = Settings.canDrawOverlays(context)
             isRestrictedBlocked = isRestrictedSettingsBlocked(context)
             isBatteryOptIgnored = BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)
             delay(1000L)
@@ -263,7 +259,7 @@ fun DashboardScreen(quotaManager: QuotaManager) {
                 }
             }
 
-            val isShieldActive = isAccessibilityEnabled && isOverlayGranted
+            val isShieldActive = isAccessibilityEnabled
             Box(
                 modifier = Modifier
                     .background(
@@ -527,29 +523,9 @@ fun DashboardScreen(quotaManager: QuotaManager) {
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // 2. Draw Over Other Apps Card
+        // 2. Battery Optimization Exemption Card
         PermissionWizardCard(
             stepNumber = "2",
-            title = "Draw Over Other Apps",
-            description = "Required for the floating top video quota status pill to display over video players.",
-            isGranted = isOverlayGranted,
-            actionLabel = "Grant Overlay",
-            onAction = {
-                val intent = Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:${context.packageName}")
-                ).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                }
-                context.startActivity(intent)
-            }
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // 3. Battery Optimization Exemption Card
-        PermissionWizardCard(
-            stepNumber = "3",
             title = "Battery Optimization Exemption",
             description = "Prevents aggressive OEM task killers (One UI, HyperOS, ColorOS) from sleeping the focus monitor.",
             isGranted = isBatteryOptIgnored,
@@ -921,49 +897,6 @@ fun DashboardScreen(quotaManager: QuotaManager) {
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // Row 4: Pill Previews (Normal, Warning, Locked)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
-                onClick = {
-                    VideoBlockerAccessibilityService.previewFloatingPill(previewState = 0)
-                    Toast.makeText(context, "Showing normal counter pill [12 / 50 (38 left)] at top for 4s", Toast.LENGTH_SHORT).show()
-                },
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = ElevatedPlumDark),
-                shape = RoundedCornerShape(100.dp)
-            ) {
-                Text(text = "Pill Normal", color = PureWhite, fontSize = 11.sp)
-            }
-
-            Button(
-                onClick = {
-                    VideoBlockerAccessibilityService.previewFloatingPill(previewState = 1)
-                    Toast.makeText(context, "Showing warn pill [50 / 50 • LAST VIDEO] at top for 4s", Toast.LENGTH_SHORT).show()
-                },
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = ElevatedPlumDark),
-                shape = RoundedCornerShape(100.dp)
-            ) {
-                Text(text = "Pill Warn", color = CoralEmber, fontSize = 11.sp)
-            }
-
-            Button(
-                onClick = {
-                    VideoBlockerAccessibilityService.previewFloatingPill(previewState = 2)
-                    Toast.makeText(context, "Showing locked pill [50 / 50 • LOCKED] at top for 4s", Toast.LENGTH_SHORT).show()
-                },
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = CoralEmber),
-                shape = RoundedCornerShape(100.dp)
-            ) {
-                Text(text = "Pill Locked", color = PureWhite, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
 
         // Row 5: Manual Ejection Test
         Button(

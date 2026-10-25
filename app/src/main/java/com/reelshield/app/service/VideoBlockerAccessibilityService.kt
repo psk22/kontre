@@ -7,25 +7,15 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.ServiceConnection
-import android.graphics.Color
-import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.provider.Settings
 import android.util.Log
-import android.view.Gravity
-import android.view.LayoutInflater
-import android.view.View
-import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
-import android.widget.LinearLayout
-import android.widget.TextView
-import com.reelshield.app.R
 import com.reelshield.app.data.QuotaManager
 import com.reelshield.app.data.rules.AppHeuristicRule
 import com.reelshield.app.data.rules.DynamicRuleEngine
@@ -42,7 +32,6 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
     private val TAG = "VideoBlockerService"
 
     protected lateinit var quotaManager: QuotaManager
-    private lateinit var windowManager: WindowManager
     val mainHandler = Handler(Looper.getMainLooper())
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -56,10 +45,6 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
     val isShortFormCurrentlyActive: Boolean
         get() = ::reelSessionTracker.isInitialized && reelSessionTracker.currentActiveHash != null
-
-    // Floating Counter Pill
-    private var pillView: View? = null
-    private var isPillShowing = false
 
     // Debounce to prevent repeated intervention bursts
     private var lastInterventionTimestamp = 0L
@@ -236,16 +221,6 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         @Volatile
         var instance: VideoBlockerAccessibilityService? = null
 
-        fun previewFloatingPill(previewState: Int = 0) { // 0: Normal, 1: Warning, 2: Locked
-            val service = instance ?: return
-            service.showOrUpdateCounterPill(previewState = previewState)
-            service.mainHandler.postDelayed({
-                if (!service.isShortFormCurrentlyActive) {
-                    service.hideCounterPill()
-                }
-            }, 4000L)
-        }
-
         fun testEjectAction(): Boolean {
             val service = instance ?: return false
             return service.performGlobalAction(GLOBAL_ACTION_BACK)
@@ -267,17 +242,13 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         super.onCreate()
         instance = this
         quotaManager = QuotaManager(applicationContext)
-        windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
         reelSessionTracker = ReelSessionTracker(
             serviceScope = serviceScope,
             quotaManager = quotaManager,
-            onCountUpdated = { _, _ ->
-                mainHandler.post { showOrUpdateCounterPill() }
-            },
+            onCountUpdated = { _, _ -> },
             onLimitReachedWarning = { platform ->
                 mainHandler.post {
-                    showOrUpdateCounterPill()
                     try {
                         val limit = quotaManager.dailyLimit
                         android.widget.Toast.makeText(
@@ -337,20 +308,17 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         if (!isSupportedPackage(packageName)) {
             cancelPendingSettle()
             cancelDwellTimer()
-            hideCounterPill()
             return
         }
 
         if ((packageName == PACKAGE_INSTAGRAM || packageName == PACKAGE_INSTAGRAM_LITE) && !quotaManager.isInstagramBlockEnabled) {
             cancelPendingSettle()
             cancelDwellTimer()
-            hideCounterPill()
             return
         }
         if (packageName == PACKAGE_YOUTUBE && !quotaManager.isYouTubeBlockEnabled) {
             cancelPendingSettle()
             cancelDwellTimer()
-            hideCounterPill()
             return
         }
 
@@ -358,7 +326,6 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         if (isKeyboardVisible()) {
             cancelPendingSettle()
             cancelDwellTimer()
-            hideCounterPill()
             return
         }
 
@@ -462,9 +429,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 handleShortFormDetected(rootNode, packageName)
             } else {
                 // User is on Home screen/feed, chatting, or viewing stories:
-                // Cancel dwell timer and hide the counter pill immediately!
                 cancelDwellTimer()
-                hideCounterPill()
             }
         } finally {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
@@ -474,9 +439,6 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
     }
 
     private fun handleShortFormDetected(scanNode: AccessibilityNodeInfo, packageName: String) {
-        // User is watching a Reel / Short: Show the live top counter pill!
-        showOrUpdateCounterPill()
-
         // Total Block Mode: 0 allowance allowed, eject immediately
         if (quotaManager.isTotalBlockEnabled) {
             triggerIntervention(packageName)
@@ -522,6 +484,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
     /**
      * Intervention Handler:
      * Auto-navigates backward to pop out of the Reels/Shorts container.
+     * Pure zero-overlay backward ejection.
      */
     private fun triggerIntervention(targetPackage: String) {
         val currentRoot = rootInActiveWindow ?: return
@@ -532,7 +495,6 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             if (!isSupportedPackage(currentPkg) || !isSupportedPackage(targetPackage)) {
                 Log.d(TAG, "Intervention aborted: active window package is $currentPkg, expected $targetPackage")
                 cancelDwellTimer()
-                hideCounterPill()
                 return
             }
 
@@ -540,7 +502,6 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             if (isKeyboardVisible() || isUserActivelyTyping(currentRoot)) {
                 Log.d(TAG, "Intervention aborted: user is texting, chatting, or typing.")
                 cancelDwellTimer()
-                hideCounterPill()
                 return
             }
 
@@ -548,19 +509,16 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 if (isInstagramStory(currentRoot)) {
                     Log.d(TAG, "Intervention aborted: user is viewing an Instagram Story.")
                     cancelDwellTimer()
-                    hideCounterPill()
                     return
                 }
                 if (isInstagramTextingOrChatting(currentRoot)) {
                     Log.d(TAG, "Intervention aborted: user is inside Instagram DMs/chat/inbox.")
                     cancelDwellTimer()
-                    hideCounterPill()
                     return
                 }
                 if (isInstagramHomeFeed(currentRoot)) {
                     Log.d(TAG, "Intervention aborted: user is browsing Instagram Home feed.")
                     cancelDwellTimer()
-                    hideCounterPill()
                     return
                 }
             }
@@ -569,7 +527,6 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             if (!detectShortFormVideo(currentRoot, targetPackage)) {
                 Log.d(TAG, "Intervention aborted: user is not in short-form player.")
                 cancelDwellTimer()
-                hideCounterPill()
                 return
             }
 
@@ -580,161 +537,12 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             lastInterventionTimestamp = now
 
             quotaManager.incrementBlockedCount()
-            showOrUpdateCounterPill()
 
-            Log.i(TAG, "Limit reached / Total Block: auto-ejecting from Reel/Short via GLOBAL_ACTION_BACK.")
+            Log.i(TAG, "Limit reached / Total Block: auto-ejecting from Reel/Short via GLOBAL_ACTION_BACK (Zero-Overlay).")
             performGlobalAction(GLOBAL_ACTION_BACK)
-
-            if (Settings.canDrawOverlays(this)) {
-                BlockingOverlayService.show(this, targetPackage)
-            }
         } finally {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
                 try { currentRoot.recycle() } catch (_: Exception) {}
-            }
-        }
-    }
-
-    /**
-     * Floating Reel Counter Pill at the Top:
-     * Displays a minimal, non-intrusive HUD at the top center of the screen
-     * indicating [ 🛡️ X / 50 (Y left) ] while watching short-form videos.
-     * Supports previewState: 0 (Normal), 1 (Warning), 2 (Locked), or -1 (Live).
-     */
-    fun showOrUpdateCounterPill(previewState: Int = -1) {
-        mainHandler.post {
-            val total = when (previewState) {
-                0 -> 12
-                1 -> 50
-                2 -> 50
-                else -> quotaManager.totalCount
-            }
-            val limit = quotaManager.dailyLimit
-            val isTotalBlock = quotaManager.isTotalBlockEnabled
-            val isWatchingLastAllowed = ::reelSessionTracker.isInitialized && reelSessionTracker.lastAllowedHash != null
-            val isLimitReached = quotaManager.isLimitReached
-
-            if (isPillShowing && pillView != null) {
-                updatePillContent(pillView!!, total, limit, isTotalBlock, isLimitReached, isWatchingLastAllowed, previewState)
-                return@post
-            }
-
-            try {
-                val inflater = LayoutInflater.from(this)
-                val view = inflater.inflate(R.layout.layout_floating_reel_counter, null)
-                updatePillContent(view, total, limit, isTotalBlock, isLimitReached, isWatchingLastAllowed, previewState)
-
-                val density = resources.displayMetrics.density
-                val topMarginPx = (38 * density).toInt()
-
-                val windowType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                    WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
-                else
-                    WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
-
-                val layoutParams = WindowManager.LayoutParams(
-                    WindowManager.LayoutParams.WRAP_CONTENT,
-                    WindowManager.LayoutParams.WRAP_CONTENT,
-                    windowType,
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-                    PixelFormat.TRANSLUCENT
-                ).apply {
-                    gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                    y = topMarginPx
-                }
-
-                try {
-                    windowManager.addView(view, layoutParams)
-                } catch (e: Exception) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        layoutParams.type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                        windowManager.addView(view, layoutParams)
-                    } else {
-                        throw e
-                    }
-                }
-
-                pillView = view
-                isPillShowing = true
-                Log.d(TAG, "Top reel counter pill attached.")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to attach counter pill", e)
-            }
-        }
-    }
-
-    private fun updatePillContent(
-        view: View,
-        total: Int,
-        limit: Int,
-        isTotalBlock: Boolean,
-        isLimitReached: Boolean,
-        isWatchingLastAllowed: Boolean,
-        previewState: Int
-    ) {
-        val pillRoot = view.findViewById<LinearLayout>(R.id.pill_root)
-        val tvIcon = view.findViewById<TextView>(R.id.tv_pill_icon)
-        val tvCounter = view.findViewById<TextView>(R.id.tv_pill_counter)
-
-        val remaining = if (isTotalBlock) 0 else maxOf(0, limit - total)
-
-        when {
-            // Case 1: Total Block Mode (0 allowance, locked)
-            isTotalBlock -> {
-                pillRoot.setBackgroundResource(R.drawable.bg_floating_pill_locked)
-                tvIcon.text = "🔒"
-                tvCounter.text = "TOTAL BLOCK • LOCKED"
-                tvCounter.setTextColor(Color.parseColor("#FFFF4A36"))
-            }
-
-            // Case 2: Locked / Exceeded limit / Blocked on next video
-            previewState == 2 || (isLimitReached && !isWatchingLastAllowed) || (limit in 1..<total) -> {
-                pillRoot.setBackgroundResource(R.drawable.bg_floating_pill_locked)
-                tvIcon.text = "🔒"
-                tvCounter.text = "$total / $limit • LOCKED"
-                tvCounter.setTextColor(Color.parseColor("#FFFF4A36"))
-            }
-
-            // Case 3: Exactly Hit 50 (Warning on the 50th video, allowed to finish)
-            previewState == 1 || (total == limit && isWatchingLastAllowed) -> {
-                pillRoot.setBackgroundResource(R.drawable.bg_floating_pill_warning)
-                tvIcon.text = "⚠️"
-                tvCounter.text = "$total / $limit • LAST VIDEO"
-                tvCounter.setTextColor(Color.parseColor("#FFFFB020"))
-            }
-
-            // Case 4: Approaching limit warning zone (e.g. 40 to 49)
-            total >= 40 && limit > 0 -> {
-                pillRoot.setBackgroundResource(R.drawable.bg_floating_pill_warning)
-                tvIcon.text = "⚠️"
-                tvCounter.text = "$total / $limit ($remaining left)"
-                tvCounter.setTextColor(Color.parseColor("#FFFFB020"))
-            }
-
-            // Case 5: Normal allowance active (0 to 39)
-            else -> {
-                pillRoot.setBackgroundResource(R.drawable.bg_floating_pill)
-                tvIcon.text = "🛡️"
-                tvCounter.text = "$total / $limit ($remaining left)"
-                tvCounter.setTextColor(Color.WHITE)
-            }
-        }
-    }
-
-    fun hideCounterPill() {
-        mainHandler.post {
-            if (isPillShowing && pillView != null) {
-                try {
-                    windowManager.removeView(pillView)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error removing counter pill", e)
-                } finally {
-                    pillView = null
-                    isPillShowing = false
-                    Log.d(TAG, "Top reel counter pill hidden.")
-                }
             }
         }
     }
@@ -1555,7 +1363,6 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         Log.w(TAG, "VideoBlockerAccessibilityService interrupted.")
         cancelPendingSettle()
         cancelDwellTimer()
-        hideCounterPill()
     }
 
     override fun onDestroy() {
@@ -1572,6 +1379,5 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         instance = null
         serviceScope.cancel()
         cancelDwellTimer()
-        hideCounterPill()
     }
 }
