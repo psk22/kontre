@@ -90,6 +90,10 @@ import com.reelshield.app.ui.theme.TextPrimary
 import com.reelshield.app.ui.theme.TextSecondary
 import com.reelshield.app.ui.theme.WhisperBorder
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.reelshield.app.data.local.AppDatabase
 import com.reelshield.app.data.local.DetectionEvent
 import kotlinx.coroutines.Dispatchers
@@ -203,19 +207,28 @@ fun DashboardScreen(quotaManager: QuotaManager) {
         }
     }
 
-    // Live 1-second refresh ticker for clock countdown & permission changes
+    // Check permissions and states on resume (eliminates 1-second IPC polling lag & GC churn)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                isAccessibilityEnabled = isAccessibilityServiceActive(context)
+                isUsageAccessGranted = UsageStatsFallbackHelper.hasUsageStatsPermission(context)
+                isDeviceAdminActive = KontreDeviceAdminReceiver.isDeviceAdminActive(context)
+                isRestrictedBlocked = isRestrictedSettingsBlocked(context)
+                isBatteryOptIgnored = BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    // Lightweight 1-second refresh ticker strictly for midnight countdown clock
     LaunchedEffect(Unit) {
         while (true) {
             countdownText = quotaManager.getTimeUntilMidnightFormatted()
-            reelsCount = quotaManager.reelsCount
-            shortsCount = quotaManager.shortsCount
-            blockedCount = quotaManager.blockedTodayCount
-            timeSaved = quotaManager.timeSavedMinutes
-            isAccessibilityEnabled = isAccessibilityServiceActive(context)
-            isUsageAccessGranted = UsageStatsFallbackHelper.hasUsageStatsPermission(context)
-            isDeviceAdminActive = KontreDeviceAdminReceiver.isDeviceAdminActive(context)
-            isRestrictedBlocked = isRestrictedSettingsBlocked(context)
-            isBatteryOptIgnored = BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)
             delay(1000L)
         }
     }

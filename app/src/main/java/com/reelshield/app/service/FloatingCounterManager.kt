@@ -99,13 +99,59 @@ class FloatingCounterManager(private val service: AccessibilityService) {
         private const val TAG = "FloatingCounterManager"
     }
 
+    private fun safeAddView(view: View?, params: WindowManager.LayoutParams): Boolean {
+        if (view == null) return false
+        return try {
+            if (!view.isAttachedToWindow) {
+                windowManager.addView(view, params)
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "safeAddView suppressed error: ${e.message}")
+            false
+        }
+    }
+
+    private fun safeRemoveView(view: View?): Boolean {
+        if (view == null) return false
+        return try {
+            if (view.isAttachedToWindow) {
+                windowManager.removeView(view)
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "safeRemoveView suppressed error: ${e.message}")
+            false
+        }
+    }
+
+    private fun safeUpdateViewLayout(view: View?, params: WindowManager.LayoutParams): Boolean {
+        if (view == null) return false
+        return try {
+            if (view.isAttachedToWindow) {
+                windowManager.updateViewLayout(view, params)
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "safeUpdateViewLayout suppressed error: ${e.message}")
+            false
+        }
+    }
+
     fun showOrUpdate(count: Int, limit: Int = 50) {
         if (isDismissedForSession) return
         currentCount = count
         currentLimit = limit
         mainHandler.post {
             try {
-                if (isShowing && overlayView != null) {
+                val view = overlayView
+                if (isShowing && view != null && view.isAttachedToWindow) {
                     updateText(count, limit)
                 } else {
                     createAndAttachOverlay(count, limit)
@@ -120,12 +166,13 @@ class FloatingCounterManager(private val service: AccessibilityService) {
         mainHandler.post {
             try {
                 hideDismissTarget()
-                if (isShowing && overlayView != null) {
-                    windowManager.removeView(overlayView)
+                val view = overlayView
+                if (view != null) {
+                    safeRemoveView(view)
                     overlayView = null
-                    isShowing = false
-                    Log.i(TAG, "Floating counter overlay removed from window.")
                 }
+                isShowing = false
+                Log.i(TAG, "Floating counter overlay removed from window.")
             } catch (e: Exception) {
                 Log.e(TAG, "Error removing floating counter overlay", e)
             }
@@ -183,6 +230,7 @@ class FloatingCounterManager(private val service: AccessibilityService) {
         var touchStartY = 0f
         var isDragging = false
         var isHoveringDismiss = false
+        var lastLayoutUpdateTime = 0L
 
         container.setOnTouchListener { _, event ->
             when (event.action) {
@@ -193,6 +241,7 @@ class FloatingCounterManager(private val service: AccessibilityService) {
                     touchStartY = event.rawY
                     isDragging = false
                     isHoveringDismiss = false
+                    lastLayoutUpdateTime = android.os.SystemClock.uptimeMillis()
                     true
                 }
 
@@ -209,8 +258,10 @@ class FloatingCounterManager(private val service: AccessibilityService) {
                         overlayLayoutParams.x = initialX + deltaX
                         overlayLayoutParams.y = initialY + deltaY
 
-                        if (isShowing && overlayView != null) {
-                            windowManager.updateViewLayout(overlayView, overlayLayoutParams)
+                        val now = android.os.SystemClock.uptimeMillis()
+                        if (now - lastLayoutUpdateTime >= 16L) {
+                            lastLayoutUpdateTime = now
+                            safeUpdateViewLayout(overlayView, overlayLayoutParams)
                         }
 
                         val badgeW = container.width.takeIf { it > 0 } ?: dpToPx(44f).toInt()
@@ -270,9 +321,7 @@ class FloatingCounterManager(private val service: AccessibilityService) {
                         overlayLayoutParams.x = snapX
                         overlayLayoutParams.y = snapY
 
-                        if (isShowing && overlayView != null) {
-                            windowManager.updateViewLayout(overlayView, overlayLayoutParams)
-                        }
+                        safeUpdateViewLayout(overlayView, overlayLayoutParams)
                     }
                     true
                 }
@@ -281,10 +330,12 @@ class FloatingCounterManager(private val service: AccessibilityService) {
             }
         }
 
+        // Clean up previous overlay if any
+        overlayView?.let { safeRemoveView(it) }
         overlayView = container
-        windowManager.addView(container, overlayLayoutParams)
-        isShowing = true
-        Log.i(TAG, "Floating counter badge displayed: '$currentCount / $currentLimit'")
+        val added = safeAddView(container, overlayLayoutParams)
+        isShowing = added
+        Log.i(TAG, "Floating counter badge displayed (success=$added): '$currentCount / $currentLimit'")
     }
 
     private fun updateText(count: Int, limit: Int) {
@@ -305,26 +356,19 @@ class FloatingCounterManager(private val service: AccessibilityService) {
         if (dismissTargetView == null) {
             createDismissTargetView()
         }
-        if (!isDismissTargetAttached && dismissTargetView != null) {
-            try {
-                setDismissTargetHighlighted(false)
-                windowManager.addView(dismissTargetView, dismissLayoutParams)
-                isDismissTargetAttached = true
-            } catch (e: Exception) {
-                Log.e(TAG, "Error displaying dismiss target view", e)
-            }
+        val target = dismissTargetView
+        if (!isDismissTargetAttached && target != null) {
+            setDismissTargetHighlighted(false)
+            val added = safeAddView(target, dismissLayoutParams)
+            isDismissTargetAttached = added
         }
     }
 
     private fun hideDismissTarget() {
-        if (isDismissTargetAttached && dismissTargetView != null) {
-            try {
-                windowManager.removeView(dismissTargetView)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error removing dismiss target view", e)
-            } finally {
-                isDismissTargetAttached = false
-            }
+        val target = dismissTargetView
+        if (target != null) {
+            safeRemoveView(target)
+            isDismissTargetAttached = false
         }
     }
 

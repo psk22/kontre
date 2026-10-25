@@ -114,6 +114,31 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         pooledNodesToRecycle.clear()
     }
 
+    private fun safeFindNodes(root: AccessibilityNodeInfo?, id: String): List<AccessibilityNodeInfo> {
+        if (root == null) return emptyList()
+        return try {
+            root.findAccessibilityNodeInfosByViewId(id) ?: emptyList()
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun safeRecycle(node: AccessibilityNodeInfo?) {
+        if (node != null && Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            try { node.recycle() } catch (_: Exception) {}
+        }
+    }
+
+    private fun safeRecycleAll(nodes: Collection<AccessibilityNodeInfo?>) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            for (n in nodes) {
+                if (n != null) {
+                    try { n.recycle() } catch (_: Exception) {}
+                }
+            }
+        }
+    }
+
     private fun cancelPendingSettle() {
         pendingSettleRunnable?.let {
             mainHandler.removeCallbacks(it)
@@ -667,12 +692,13 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             if (focusedNode != null) {
                 val isInput = focusedNode.isEditable ||
                         (focusedNode.className?.contains("EditText", ignoreCase = true) == true)
-                focusedNode.recycle()
+                safeRecycle(focusedNode)
                 if (isInput) return true
             }
         } catch (_: Exception) {}
 
         // 3. Search for an actively FOCUSED editable node in the tree using flatNodeQueue
+        val nodesToRecycle = mutableListOf<AccessibilityNodeInfo>()
         flatNodeQueue.clear()
         flatNodeQueue.add(root)
         var visited = 0
@@ -686,11 +712,16 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 }
 
                 for (i in 0 until node.childCount) {
-                    node.getChild(i)?.let { flatNodeQueue.add(it) }
+                    val child = try { node.getChild(i) } catch (_: Exception) { null }
+                    if (child != null) {
+                        flatNodeQueue.add(child)
+                        nodesToRecycle.add(child)
+                    }
                 }
             }
         } finally {
             flatNodeQueue.clear()
+            safeRecycleAll(nodesToRecycle)
         }
         return false
     }
@@ -736,24 +767,37 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
      * Checks if the dedicated Reels bottom tab is currently selected.
      */
     private fun isInstagramReelsTabSelected(root: AccessibilityNodeInfo): Boolean {
-        val clipsTab = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_tab")
-        if (!clipsTab.isNullOrEmpty() && clipsTab.any { it.isSelected }) return true
+        val clipsTab = safeFindNodes(root, "com.instagram.android:id/clips_tab")
+        try {
+            if (clipsTab.any { it.isSelected }) return true
+        } finally {
+            safeRecycleAll(clipsTab)
+        }
 
-        val tabNodes = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/tab_bar")
-        if (!tabNodes.isNullOrEmpty()) {
-            val tabBar = tabNodes.first()
-            for (i in 0 until tabBar.childCount) {
-                val child = tabBar.getChild(i) ?: continue
-                if (child.isSelected) {
-                    val desc = (child.contentDescription?.toString() ?: "").lowercase()
-                    val resId = (child.viewIdResourceName ?: "").lowercase()
-                    if (desc.contains("reel") || desc.contains("clip") || resId.contains("clips_tab")) {
-                        return true
+        val tabNodes = safeFindNodes(root, "com.instagram.android:id/tab_bar")
+        try {
+            if (tabNodes.isNotEmpty()) {
+                val tabBar = tabNodes.first()
+                for (i in 0 until tabBar.childCount) {
+                    val child = try { tabBar.getChild(i) } catch (_: Exception) { null } ?: continue
+                    try {
+                        if (child.isSelected) {
+                            val desc = (child.contentDescription?.toString() ?: "").lowercase()
+                            val resId = (child.viewIdResourceName ?: "").lowercase()
+                            if (desc.contains("reel") || desc.contains("clip") || resId.contains("clips_tab")) {
+                                return true
+                            }
+                        }
+                    } finally {
+                        safeRecycle(child)
                     }
                 }
             }
+        } finally {
+            safeRecycleAll(tabNodes)
         }
 
+        val nodesToRecycle = mutableListOf<AccessibilityNodeInfo>()
         flatNodeQueue.clear()
         flatNodeQueue.add(root)
         var count = 0
@@ -770,11 +814,16 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                     }
                 }
                 for (i in 0 until node.childCount) {
-                    node.getChild(i)?.let { flatNodeQueue.add(it) }
+                    val child = try { node.getChild(i) } catch (_: Exception) { null }
+                    if (child != null) {
+                        flatNodeQueue.add(child)
+                        nodesToRecycle.add(child)
+                    }
                 }
             }
         } finally {
             flatNodeQueue.clear()
+            safeRecycleAll(nodesToRecycle)
         }
 
         return false
@@ -785,24 +834,37 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
      * Works across standard Instagram and Instagram Lite.
      */
     private fun isInstagramHomeTabSelected(root: AccessibilityNodeInfo): Boolean {
-        val feedTab = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/feed_tab")
-        if (!feedTab.isNullOrEmpty() && feedTab.any { it.isSelected }) return true
+        val feedTab = safeFindNodes(root, "com.instagram.android:id/feed_tab")
+        try {
+            if (feedTab.any { it.isSelected }) return true
+        } finally {
+            safeRecycleAll(feedTab)
+        }
 
-        val tabNodes = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/tab_bar")
-        if (!tabNodes.isNullOrEmpty()) {
-            val tabBar = tabNodes.first()
-            for (i in 0 until tabBar.childCount) {
-                val child = tabBar.getChild(i) ?: continue
-                if (child.isSelected) {
-                    val desc = (child.contentDescription?.toString() ?: "").lowercase()
-                    val resId = (child.viewIdResourceName ?: "").lowercase()
-                    if (desc.contains("home") || desc.contains("feed") || resId.contains("feed_tab")) {
-                        return true
+        val tabNodes = safeFindNodes(root, "com.instagram.android:id/tab_bar")
+        try {
+            if (tabNodes.isNotEmpty()) {
+                val tabBar = tabNodes.first()
+                for (i in 0 until tabBar.childCount) {
+                    val child = try { tabBar.getChild(i) } catch (_: Exception) { null } ?: continue
+                    try {
+                        if (child.isSelected) {
+                            val desc = (child.contentDescription?.toString() ?: "").lowercase()
+                            val resId = (child.viewIdResourceName ?: "").lowercase()
+                            if (desc.contains("home") || desc.contains("feed") || resId.contains("feed_tab")) {
+                                return true
+                            }
+                        }
+                    } finally {
+                        safeRecycle(child)
                     }
                 }
             }
+        } finally {
+            safeRecycleAll(tabNodes)
         }
 
+        val nodesToRecycle = mutableListOf<AccessibilityNodeInfo>()
         flatNodeQueue.clear()
         flatNodeQueue.add(root)
         var count = 0
@@ -819,11 +881,16 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                     }
                 }
                 for (i in 0 until node.childCount) {
-                    node.getChild(i)?.let { flatNodeQueue.add(it) }
+                    val child = try { node.getChild(i) } catch (_: Exception) { null }
+                    if (child != null) {
+                        flatNodeQueue.add(child)
+                        nodesToRecycle.add(child)
+                    }
                 }
             }
         } finally {
             flatNodeQueue.clear()
+            safeRecycleAll(nodesToRecycle)
         }
 
         return false
@@ -861,19 +928,28 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         )
 
         for (id in storyViewIds) {
-            val nodes = root.findAccessibilityNodeInfosByViewId(id)
-            if (!nodes.isNullOrEmpty() && nodes.any { it.isVisibleToUser }) {
-                return true
+            val nodes = safeFindNodes(root, id)
+            try {
+                if (nodes.any { it.isVisibleToUser }) {
+                    return true
+                }
+            } finally {
+                safeRecycleAll(nodes)
             }
         }
 
         // 2. Check for reel_viewer_container (Story viewer container in Instagram)
-        val reelViewerContainer = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/reel_viewer_container")
-        if (!reelViewerContainer.isNullOrEmpty() && reelViewerContainer.any { it.isVisibleToUser }) {
-            return true
+        val reelViewerContainer = safeFindNodes(root, "com.instagram.android:id/reel_viewer_container")
+        try {
+            if (reelViewerContainer.any { it.isVisibleToUser }) {
+                return true
+            }
+        } finally {
+            safeRecycleAll(reelViewerContainer)
         }
 
         // 3. Tree-walk check for Story progress bar, reply prompts, or story header using flatNodeQueue
+        val nodesToRecycle = mutableListOf<AccessibilityNodeInfo>()
         flatNodeQueue.clear()
         flatNodeQueue.add(root)
         var visited = 0
@@ -909,11 +985,16 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 }
 
                 for (i in 0 until node.childCount) {
-                    node.getChild(i)?.let { flatNodeQueue.add(it) }
+                    val child = try { node.getChild(i) } catch (_: Exception) { null }
+                    if (child != null) {
+                        flatNodeQueue.add(child)
+                        nodesToRecycle.add(child)
+                    }
                 }
             }
         } finally {
             flatNodeQueue.clear()
+            safeRecycleAll(nodesToRecycle)
         }
 
         return false
@@ -957,9 +1038,13 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         )
 
         for (id in dedicatedClipsIds) {
-            val nodes = root.findAccessibilityNodeInfosByViewId(id)
-            if (!nodes.isNullOrEmpty() && nodes.any { isDedicatedFullscreenReel(it) }) {
-                return true
+            val nodes = safeFindNodes(root, id)
+            try {
+                if (nodes.any { isDedicatedFullscreenReel(it) }) {
+                    return true
+                }
+            } finally {
+                safeRecycleAll(nodes)
             }
         }
 
@@ -968,6 +1053,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         }
 
         // Fast tree-walk fallback to catch obfuscated/unnamed clips containers
+        val nodesToRecycle = mutableListOf<AccessibilityNodeInfo>()
         flatNodeQueue.clear()
         flatNodeQueue.add(root)
         var visited = 0
@@ -987,11 +1073,16 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 }
 
                 for (i in 0 until node.childCount) {
-                    node.getChild(i)?.let { flatNodeQueue.add(it) }
+                    val child = try { node.getChild(i) } catch (_: Exception) { null }
+                    if (child != null) {
+                        flatNodeQueue.add(child)
+                        nodesToRecycle.add(child)
+                    }
                 }
             }
         } finally {
             flatNodeQueue.clear()
+            safeRecycleAll(nodesToRecycle)
         }
 
         return false
@@ -1050,13 +1141,18 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         )
 
         for (id in dmViewIds) {
-            val nodes = root.findAccessibilityNodeInfosByViewId(id)
-            if (!nodes.isNullOrEmpty() && nodes.any { it.isVisibleToUser }) {
-                return true
+            val nodes = safeFindNodes(root, id)
+            try {
+                if (nodes.any { it.isVisibleToUser }) {
+                    return true
+                }
+            } finally {
+                safeRecycleAll(nodes)
             }
         }
 
         // 4. Content description, text, and keyword matching across the tree using flatNodeQueue
+        val nodesToRecycle = mutableListOf<AccessibilityNodeInfo>()
         flatNodeQueue.clear()
         flatNodeQueue.add(root)
         var visited = 0
@@ -1093,11 +1189,16 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 }
 
                 for (i in 0 until node.childCount) {
-                    node.getChild(i)?.let { flatNodeQueue.add(it) }
+                    val child = try { node.getChild(i) } catch (_: Exception) { null }
+                    if (child != null) {
+                        flatNodeQueue.add(child)
+                        nodesToRecycle.add(child)
+                    }
                 }
             }
         } finally {
             flatNodeQueue.clear()
+            safeRecycleAll(nodesToRecycle)
         }
 
         return false
@@ -1127,9 +1228,13 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             "com.instagram.android:id/refreshable_container"
         )
         for (id in feedIds) {
-            val nodes = root.findAccessibilityNodeInfosByViewId(id)
-            if (!nodes.isNullOrEmpty() && nodes.any { it.isVisibleToUser }) {
-                return true
+            val nodes = safeFindNodes(root, id)
+            try {
+                if (nodes.any { it.isVisibleToUser }) {
+                    return true
+                }
+            } finally {
+                safeRecycleAll(nodes)
             }
         }
 
@@ -1146,6 +1251,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
      * (E.g. tapped a Reel in Instagram Lite outside feed/DMs).
      */
     private fun isGenericFullscreenReel(root: AccessibilityNodeInfo): Boolean {
+        val nodesToRecycle = mutableListOf<AccessibilityNodeInfo>()
         flatNodeQueue.clear()
         flatNodeQueue.add(root)
         var count = 0
@@ -1173,11 +1279,16 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 }
 
                 for (i in 0 until node.childCount) {
-                    node.getChild(i)?.let { flatNodeQueue.add(it) }
+                    val child = try { node.getChild(i) } catch (_: Exception) { null }
+                    if (child != null) {
+                        flatNodeQueue.add(child)
+                        nodesToRecycle.add(child)
+                    }
                 }
             }
         } finally {
             flatNodeQueue.clear()
+            safeRecycleAll(nodesToRecycle)
         }
 
         return hasFullscreenVideo && hasReelIndicator
@@ -1201,8 +1312,12 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             "com.google.android.youtube:id/search_edit_text"
         )
         for (id in ytChatIds) {
-            val nodes = root.findAccessibilityNodeInfosByViewId(id)
-            if (!nodes.isNullOrEmpty() && nodes.any { it.isVisibleToUser }) return true
+            val nodes = safeFindNodes(root, id)
+            try {
+                if (nodes.any { it.isVisibleToUser }) return true
+            } finally {
+                safeRecycleAll(nodes)
+            }
         }
 
         return false
@@ -1279,25 +1394,44 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         }
 
         // Normal long-form video player safeguard
-        if (!root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/watch_while_layout").isNullOrEmpty()) {
-            val reelRecycler = root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/reel_recycler")
-            val reelPlayer = root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/reel_player_page_content")
-            val hasReelRecycler = !reelRecycler.isNullOrEmpty() && reelRecycler.any { isFullScreenNode(it) }
-            val hasReelPlayer = !reelPlayer.isNullOrEmpty() && reelPlayer.any { isFullScreenNode(it) }
-            if (!hasReelRecycler && !hasReelPlayer) {
-                return false
+        val watchWhile = safeFindNodes(root, "com.google.android.youtube:id/watch_while_layout")
+        try {
+            if (watchWhile.isNotEmpty()) {
+                val reelRecycler = safeFindNodes(root, "com.google.android.youtube:id/reel_recycler")
+                val reelPlayer = safeFindNodes(root, "com.google.android.youtube:id/reel_player_page_content")
+                try {
+                    val hasReelRecycler = reelRecycler.any { isFullScreenNode(it) }
+                    val hasReelPlayer = reelPlayer.any { isFullScreenNode(it) }
+                    if (!hasReelRecycler && !hasReelPlayer) {
+                        return false
+                    }
+                } finally {
+                    safeRecycleAll(reelRecycler)
+                    safeRecycleAll(reelPlayer)
+                }
             }
+        } finally {
+            safeRecycleAll(watchWhile)
         }
 
         // SIGNATURE 1: Dedicated Shorts player container (must be visible and full-screen)
         // Works whether launched from Home feed, Shorts tab, or link!
-        val reelRecycler = root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/reel_recycler")
-        if (!reelRecycler.isNullOrEmpty() && reelRecycler.any { isFullScreenNode(it) }) return true
+        val reelRecycler = safeFindNodes(root, "com.google.android.youtube:id/reel_recycler")
+        try {
+            if (reelRecycler.any { isFullScreenNode(it) }) return true
+        } finally {
+            safeRecycleAll(reelRecycler)
+        }
 
-        val reelPlayer = root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/reel_player_page_content")
-        if (!reelPlayer.isNullOrEmpty() && reelPlayer.any { isFullScreenNode(it) }) return true
+        val reelPlayer = safeFindNodes(root, "com.google.android.youtube:id/reel_player_page_content")
+        try {
+            if (reelPlayer.any { isFullScreenNode(it) }) return true
+        } finally {
+            safeRecycleAll(reelPlayer)
+        }
 
         // SIGNATURE 2: Shorts Tab selected in bottom bar using flatNodeQueue
+        val nodesToRecycle = mutableListOf<AccessibilityNodeInfo>()
         flatNodeQueue.clear()
         flatNodeQueue.add(root)
         var visited = 0
@@ -1315,11 +1449,16 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 }
 
                 for (i in 0 until node.childCount) {
-                    node.getChild(i)?.let { flatNodeQueue.add(it) }
+                    val child = try { node.getChild(i) } catch (_: Exception) { null }
+                    if (child != null) {
+                        flatNodeQueue.add(child)
+                        nodesToRecycle.add(child)
+                    }
                 }
             }
         } finally {
             flatNodeQueue.clear()
+            safeRecycleAll(nodesToRecycle)
         }
 
         // SIGNATURE 3: Tiered Heuristic Detection (detectReelContainer)
@@ -1465,6 +1604,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         val actionKeywords = appRule?.actionRailKeywords ?: listOf("action", "like", "comment", "share")
         var actionButtonCount = 0
 
+        val nodesToRecycle = mutableListOf<AccessibilityNodeInfo>()
         flatNodeQueue.clear()
         flatNodeQueue.add(container)
         var visited = 0
@@ -1494,11 +1634,16 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 }
 
                 for (i in 0 until node.childCount) {
-                    node.getChild(i)?.let { flatNodeQueue.add(it) }
+                    val child = try { node.getChild(i) } catch (_: Exception) { null }
+                    if (child != null) {
+                        flatNodeQueue.add(child)
+                        nodesToRecycle.add(child)
+                    }
                 }
             }
         } finally {
             flatNodeQueue.clear()
+            safeRecycleAll(nodesToRecycle)
         }
         return actionButtonCount >= requiredCount
     }
