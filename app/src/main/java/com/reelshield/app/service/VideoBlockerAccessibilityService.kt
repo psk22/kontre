@@ -1,8 +1,11 @@
 package com.reelshield.app.service
 
 import android.accessibilityservice.AccessibilityService
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -163,7 +166,62 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
         override fun onServiceDisconnected(name: ComponentName?) {
             isWatcherBound = false
-            Log.d(TAG, "Disconnected from WatcherForegroundService.")
+            Log.w(TAG, "Disconnected from WatcherForegroundService! Resuscitating foreground keeper...")
+            WatcherForegroundService.start(this@VideoBlockerAccessibilityService)
+            isWatcherBound = WatcherForegroundService.bind(this@VideoBlockerAccessibilityService, this)
+        }
+    }
+
+    // Dual-Service Watchdog IPC Ping Receiver
+    private var isWatchdogReceiverRegistered = false
+    private val watchdogPingReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == WatcherForegroundService.ACTION_WATCHDOG_PING) {
+                Log.d(TAG, "Received IPC watchdog PING from WatcherForegroundService; responding with PONG.")
+                try {
+                    val pongIntent = Intent(WatcherForegroundService.ACTION_WATCHDOG_PONG).apply {
+                        setPackage(packageName)
+                    }
+                    sendBroadcast(pongIntent)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to send watchdog pong broadcast", e)
+                }
+
+                // If foreground service was unbound or died, re-bind
+                if (!isWatcherBound) {
+                    WatcherForegroundService.start(this@VideoBlockerAccessibilityService)
+                    isWatcherBound = WatcherForegroundService.bind(this@VideoBlockerAccessibilityService, watcherConnection)
+                }
+            }
+        }
+    }
+
+    private fun registerWatchdogReceiver() {
+        if (!isWatchdogReceiverRegistered) {
+            try {
+                val filter = IntentFilter(WatcherForegroundService.ACTION_WATCHDOG_PING)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    registerReceiver(watchdogPingReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+                } else {
+                    registerReceiver(watchdogPingReceiver, filter)
+                }
+                isWatchdogReceiverRegistered = true
+                Log.d(TAG, "Registered watchdog ping receiver in AccessibilityService.")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to register watchdog ping receiver", e)
+            }
+        }
+    }
+
+    private fun unregisterWatchdogReceiver() {
+        if (isWatchdogReceiverRegistered) {
+            try {
+                unregisterReceiver(watchdogPingReceiver)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to unregister watchdog ping receiver", e)
+            } finally {
+                isWatchdogReceiverRegistered = false
+            }
         }
     }
 
@@ -239,6 +297,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
         WatcherForegroundService.start(this)
         isWatcherBound = WatcherForegroundService.bind(this, watcherConnection)
+        registerWatchdogReceiver()
 
         // Initialize Dynamic Rule Engine & trigger background remote sync
         dynamicRuleEngine = DynamicRuleEngine.getInstance(applicationContext)
@@ -251,7 +310,17 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         WatcherForegroundService.start(this)
         isWatcherBound = WatcherForegroundService.bind(this, watcherConnection)
-        Log.i(TAG, "AccessibilityService connected and bound to WatcherForegroundService.")
+        registerWatchdogReceiver()
+
+        // Send immediate initial PONG to notify WatcherForegroundService that accessibility is online
+        try {
+            val pongIntent = Intent(WatcherForegroundService.ACTION_WATCHDOG_PONG).apply {
+                setPackage(packageName)
+            }
+            sendBroadcast(pongIntent)
+        } catch (_: Exception) {}
+
+        Log.i(TAG, "AccessibilityService connected, bound to WatcherForegroundService, and registered watchdog receiver.")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -1492,6 +1561,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         super.onDestroy()
         cancelPendingSettle()
+        unregisterWatchdogReceiver()
         if (isWatcherBound) {
             WatcherForegroundService.unbind(this, watcherConnection)
             isWatcherBound = false

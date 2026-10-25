@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.reelshield.app.data.QuotaManager
 import com.reelshield.app.data.rules.DynamicRuleEngine
+import com.reelshield.app.service.ResuscitationWorker
 import com.reelshield.app.service.WatcherForegroundService
 import com.reelshield.app.service.VideoBlockerAccessibilityService
 import com.reelshield.app.util.BatteryOptimizationHelper
@@ -97,6 +98,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         quotaManager = QuotaManager(this)
         WatcherForegroundService.start(this)
+        ResuscitationWorker.schedule(this)
+        handleNotificationIntent(intent)
 
         setContent {
             KontreTheme {
@@ -106,6 +109,32 @@ class MainActivity : ComponentActivity() {
                 ) {
                     DashboardScreen(quotaManager = quotaManager)
                 }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleNotificationIntent(intent)
+    }
+
+    private fun handleNotificationIntent(intent: Intent?) {
+        if (intent == null) return
+        if (intent.getBooleanExtra("EXTRA_OPEN_ACCESSIBILITY", false)) {
+            try {
+                val settingsIntent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(settingsIntent)
+            } catch (e: Exception) {
+                android.util.Log.e("MainActivity", "Failed to launch accessibility settings", e)
+            }
+        } else if (intent.getBooleanExtra("EXTRA_OPEN_BATTERY_SETTINGS", false)) {
+            try {
+                BatteryOptimizationHelper.openOemBackgroundSettings(this)
+            } catch (e: Exception) {
+                android.util.Log.e("MainActivity", "Failed to launch OEM battery settings", e)
             }
         }
     }

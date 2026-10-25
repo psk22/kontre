@@ -12,8 +12,8 @@ android {
         applicationId = "com.reelshield.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 12
-        versionName = "1.3.1"
+        versionCode = 13
+        versionName = "1.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -65,5 +65,6 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.work.runtime.ktx)
     debugImplementation(libs.androidx.ui.tooling)
 }
