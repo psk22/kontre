@@ -1,100 +1,118 @@
-# Kontre 🛡️
-> **A high-performance Android short-form video blocker targeting Instagram Reels & YouTube Shorts while preserving full access to DMs, chats, stories, and feed posts.**
+# Kontre (ReelShield) — Short-Form Video Blocker & Focus Guard
+
+> **A native Android digital wellbeing companion built with Kotlin & Jetpack Compose (Target SDK 35 / Android 15 ready).**  
+> Engineered to break compulsive doom-scrolling on **Instagram Reels** and **YouTube Shorts** without breaking messaging, search, or normal feed browsing.
 
 ---
 
-## 🏗️ Core Architecture & Components
+## 🎯 1. Overview & Philosophy
 
-### 1. Accessibility Service (`VideoBlockerAccessibilityService`)
-- Subclasses Android's `AccessibilityService`.
-- Listens to `TYPE_WINDOW_STATE_CHANGED`, `TYPE_VIEW_SCROLLED`, and `TYPE_WINDOW_CONTENT_CHANGED`.
-- Target Packages: `com.instagram.android` and `com.google.android.youtube`.
-- **BFS & Recursive Tree-Walk**:
-  - Traverses `AccessibilityNodeInfo` in the active window.
-  - **Resource ID Matching**: Looks for keywords such as `reel`, `shorts_player`, `clips_video_container`, `reel_viewer`.
-  - **Content Description Matching**: Detects view labels for terms like `"Reels"`, `"Shorts"`, `"Sound"`, `"Remix"`.
-  - **View Hierarchy & Dimensions**: Detects full-screen vertical swipe containers (`ViewPager2` / vertical `RecyclerView` occupying $\ge 90\%$ screen height/width).
-  - **Explicit Safeguards**:
-    - Direct Messages / Chat: `direct_message_list`, `composer` $\rightarrow$ NEVER flagged as Reels.
-    - Stories: `story_progress`, `story_item` $\rightarrow$ NEVER flagged as Reels.
-    - Home Feed: `feed_recycler_view` $\rightarrow$ NEVER flagged as Reels.
+Most screen-time blockers take a blunt "all-or-nothing" approach: they shut down Instagram or YouTube completely when a timer expires. This creates friction because users still need:
+- **Instagram Direct Messages (DMs)** to chat with family, friends, and clients.
+- **Instagram Stories & Feed Posts** to stay updated without getting sucked into infinite scroll loops.
+- **YouTube Long-Form Videos & Search** for studying, tutorials, and intentional watching.
 
-### 2. Dwell & Debounce Engine
-- Prevents false positives from feed scroll-bys.
-- Runs a **1.8-second Coroutine dwell timer**:
-  - Starts when a short-form signature is first detected.
-  - Automatically cancels if the user leaves the node or scrolls past within 1.8 seconds.
-  - Increments daily count and triggers the intervention handler only upon intentional completion.
-
-### 3. Non-Intrusive Floating Top Counter & Zero-Overlay Ejection
-1. **Live Floating Top Counter Pill**:
-   - Pinned at the top center of the screen as an unobtrusive status pill (`[ 🛡️ 18 / 50 ]`).
-   - Automatically appears **only** when watching Instagram Reels or YouTube Shorts.
-   - Non-touchable (`FLAG_NOT_TOUCHABLE`) so it never blocks taps, buttons, or navigation underneath.
-   - Automatically disappears when you navigate back to Chats, Stories, or Feed.
-2. **Clean Navigation Ejection (Zero Overlay)**:
-   - When the 50-video quota is reached, the pill displays `[ 🔒 50 / 50 LOCKED ]`.
-   - Opening a Reel or Short executes `performGlobalAction(GLOBAL_ACTION_BACK)` to immediately step out.
-   - **No intrusive fullscreen overlays, no popups, and no dialogs**.
-
-### 4. Foreground Service & Lifecycle Stability (`KontreForegroundService`)
-- Sticky `ForegroundService` (`START_STICKY`) with ongoing notification to prevent Android's OOM low-memory killer.
-- Configured with `foregroundServiceType="specialUse"` and `PROPERTY_SPECIAL_USE_FGS_SUBTYPE` for Android 14+ compliance.
-- Supports battery optimization exemption (`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`).
+**Kontre** takes a surgical approach. It uses real-time accessibility node inspection to identify **only** full-screen vertical short-form video players (Reels & Shorts), while leaving the rest of Instagram and YouTube 100% accessible and operational.
 
 ---
 
-## 📁 Source Code Map
+## ✨ 2. Key Features
+
+### 🔢 Daily Video Quota (e.g. 50 Reels/Shorts)
+- Sets a clear daily limit for short-form video consumption (default: **50 videos/day**).
+- Shows real-time progress in the format: `[ 3 / 50 ]`.
+- Automatic daily reset at midnight (`00:00`).
+
+### 🏷️ Smooth Draggable Floating Counter Badge
+- **Appears only inside short-form feeds**: The floating counter overlay mounts automatically when you open Instagram Reels or YouTube Shorts.
+- **Fully adjustable**: Touch and drag the counter anywhere on your screen. Coordinates are clamped within screen boundaries so it never goes off-screen.
+- **Permanent position memory**: Saves your preferred spot in persistent preferences and restores it on next launch.
+- **Zero duplicates**: Built with a strict single-instance overlay lifecycle that guarantees you will never see multiple or ghost popups.
+- **Auto-dismiss on exit**: Within ~250ms of leaving a Reel or Short (navigating to Home feed, DMs, profile, or exiting the app), the badge automatically hides.
+
+### 🛡️ Graceful Home Redirection (No App Kicking)
+- **Stays inside the app**: When your 50-video quota is reached, Kontre does **not** kick you out of Instagram or YouTube.
+- **Automatic Home Navigation**: Instead of spamming the Android `BACK` button (which crashes or closes the entire app), the engine identifies and smoothly clicks the **Home** navigation tab.
+  - **In Instagram**: You are redirected to the Home feed, where you can browse photos, check stories, and open DMs.
+  - **In YouTube**: You are redirected to the Home tab, where you can watch standard 16:9 long-form videos or browse subscriptions.
+- **Single-Back Fallback with 2s Rate Limiter**: If a Reel was opened in full-screen from a shared link or message (where no bottom navigation bar is visible), Kontre triggers a single `BACK` action protected by a 2000ms cooldown. It will never fire repeated back presses or close the app.
+
+### 🔍 Multi-Factor Vertical Feed Detection Engine
+- Inspects accessibility view trees to detect authentic vertical video players using multiple corroborating signals:
+  - Full-screen container dimensions (`height >= 70%`, `width >= 75%`).
+  - Vertically stacked right-edge action buttons (Like, Comment, Share, Remix, Audio).
+  - Selected bottom navigation tabs (`Reels` tab in Instagram, `Shorts` tab in YouTube).
+  - Unique author, caption, or audio signature transitions for accurate video counting.
+
+### 🛡️ Comprehensive Feed & Feature Immunity
+The heuristic engine explicitly verifies non-reel contexts and never interferes with:
+- **Stories Tray & Story Viewer**: Viewing friends' stories (even with embedded reels) is 100% immune.
+- **Direct Messages & Chats**: DMs, typing, requests, and inbox threads are never blocked.
+- **Home Feed Posts & Carousels**: Scrolling regular image or video posts on the feed will never count against your quota or trigger an ejection.
+- **Search, Explore & Profile**: Browsing user profiles, search results, or settings is fully permitted.
+- **Standard YouTube Videos**: Standard 16:9 long-form videos (`watch_player`), searches, and subscriptions are completely untouched.
+
+### 🔒 100% Privacy & Zero Database Bloat
+- **Local Operation**: All detection runs directly on your device via the Android Accessibility Service.
+- **No Database**: Room database dependencies have been removed. No event history or video identifiers are saved to disk.
+- **Zero Telemetry**: No network requests, analytics trackers, or user profiling.
+
+---
+
+## 🏗️ 3. Architecture & Component Structure
 
 ```
-ReelShield/
-├── app/
-│   ├── src/main/
-│   │   ├── AndroidManifest.xml                        # Permissions & Services configuration
-│   │   ├── res/
-│   │   │   ├── xml/accessibility_service_config.xml    # Event types & package filter
-│   │   │   ├── layout/layout_reel_block_overlay.xml   # In-app habit friction overlay
-│   │   │   ├── drawable/                              # Adaptive icons & button shapes
-│   │   │   └── values/themes.xml                      # Dark themes & colors
-│   │   └── java/com/reelshield/app/
-│   │       ├── data/QuotaManager.kt                   # 50-video quota & midnight reset
-│   │       ├── service/
-│   │       │   ├── VideoBlockerAccessibilityService.kt # BFS heuristics & dwell engine
-│   │       │   ├── BlockingOverlayService.kt          # TYPE_APPLICATION_OVERLAY
-│   │       │   └── KontreForegroundService.kt         # Sticky FGS lifecycle watcher
-│   │       ├── ui/
-│   │       │   ├── BlockOverlayActivity.kt            # Fullscreen lockout activity
-│   │       │   └── theme/                             # Jetpack Compose theme tokens
-│   │       └── MainActivity.kt                        # Jetpack Compose dashboard
-│   └── build.gradle.kts                               # AGP 8.7 & Kotlin 2.0 (minSdk 26, targetSdk 35)
-├── gradle/libs.versions.toml
-└── settings.gradle.kts
+com.reelshield.app
+├── MainActivity.kt                      # Jetpack Compose UI (status cards, quota settings, switches)
+├── data/
+│   └── QuotaManager.kt                  # Lightweight SharedPreferences manager for daily counters & limits
+└── service/
+    ├── ContentTrackerService.kt         # Core Accessibility Service engine:
+    │                                    #   - Real-time view tree scanner (YouTube Shorts & Instagram Reels)
+    │                                    #   - Graceful Home tab redirection & single-back rate-limiter
+    │                                    #   - 250ms liveness watchdog for instant overlay dismissal
+    ├── FloatingCounterManager.kt        # Draggable floating window overlay manager:
+    │                                    #   - Single-instance FrameLayout overlay attached to WindowManager
+    │                                    #   - Real-time touch drag listener with boundary clamping
+    │                                    #   - Position coordinate persistence in SharedPreferences
+    ├── VideoBlockerAccessibilityService # Primary accessibility service declaration extending ContentTrackerService
+    └── WatcherForegroundService.kt      # Foreground service maintaining process priority
 ```
 
 ---
 
-## 📲 Installation & Build
+## ⚙️ 4. Required Android Permissions
 
+| Permission | Purpose |
+| :--- | :--- |
+| **Accessibility Service** | Allows Kontre to inspect the active view hierarchy to detect when a Reel or Short is loaded, count transitions, and navigate back to Home upon limit completion. |
+| **Display over other apps** (`SYSTEM_ALERT_WINDOW`) | Allows the small `[ 3 / 50 ]` floating badge to render over short-form video players while you watch. |
+
+---
+
+## 🚀 5. How to Build & Install
+
+### Prerequisites
+- Android Studio / Android SDK (Platform SDK 35).
+- An Android device with **USB Debugging** enabled (`Settings → Developer Options → USB Debugging`).
+
+### Build & Run Commands
 ```powershell
-# 1. Build Debug APK with JDK 17
-$env:JAVA_HOME = "c:\Avv\p.proj\jdk17\jdk-17.0.20.1+1"
+# Navigate to the project directory
 cd c:\Avv\p.proj\ReelShield
-.\gradlew.bat assembleDebug
 
-# 2. Push & Install via ADB
-adb push app\build\outputs\apk\debug\app-debug.apk /data/local/tmp/app.apk
-adb shell pm install -r -d -t /data/local/tmp/app.apk
+# Compile and install onto connected phone
+.\gradlew installDebug
 
-# 3. Enable Accessibility & Overlay
-adb shell settings put secure enabled_accessibility_services com.reelshield.app/com.reelshield.app.service.VideoBlockerAccessibilityService
-adb shell settings put secure accessibility_enabled 1
-adb shell appops set com.reelshield.app SYSTEM_ALERT_WINDOW allow
+# Launch the app
+adb shell monkey -p com.reelshield.app -c android.intent.category.LAUNCHER 1
 ```
 
-For the comprehensive architecture breakdown, heuristics guide, and bug fix engineering log, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
-
----
-
-## 🚀 Automated Builds & GitHub Actions
-- **Continuous Integration**: Every push to `main` automatically runs `./gradlew assembleRelease` via GitHub Actions and publishes the signed `Kontre-release.apk` as a build artifact.
-- **Releases**: Creating and pushing a tag (e.g. `v1.0.0`) automatically publishes a GitHub Release with the attached `Kontre-release.apk` ready to download directly on any phone.
+### Initial Device Setup
+1. Open **Kontre** on your phone.
+2. Grant **Accessibility Service** permission (`Settings → Accessibility → Installed Apps → Kontre`).
+3. Grant **Display over other apps** (for the floating counter).
+4. Open **Instagram** or **YouTube**:
+   - The floating counter appears showing `0/50`.
+   - Drag the counter to your preferred position.
+   - When 50 reels are reached, the app automatically redirects you to the Home feed without closing Instagram or YouTube.
