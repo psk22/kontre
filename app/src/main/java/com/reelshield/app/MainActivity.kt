@@ -92,6 +92,21 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var quotaManager: QuotaManager
 
+    companion object {
+        @Volatile
+        var isResumed = false
+    }
+
+    override fun onResume() {
+        super.onResume()
+        isResumed = true
+    }
+
+    override fun onPause() {
+        isResumed = false
+        super.onPause()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         quotaManager = QuotaManager(this)

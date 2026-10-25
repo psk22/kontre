@@ -23,6 +23,7 @@ class FloatingCounterManager(private val service: AccessibilityService) {
     private val windowManager = service.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val mainHandler = Handler(Looper.getMainLooper())
     private val prefs = service.getSharedPreferences("floating_counter_prefs", Context.MODE_PRIVATE)
+    private val quotaManager by lazy { QuotaManager(service) }
 
     // Strict single instance pattern: exactly one container & one textview
     private var overlayContainer: FrameLayout? = null
@@ -40,16 +41,10 @@ class FloatingCounterManager(private val service: AccessibilityService) {
     private var currentCount = 0
     private var currentLimit = 50
 
-    // Safety watchdog to auto-clear isDragging in case ACTION_UP is lost
-    private val dragTimeoutRunnable = Runnable {
-        isDragging = false
-    }
-
     companion object {
         private const val TAG = "FloatingCounterManager"
         private const val PREF_X = "counter_x"
         private const val PREF_Y = "counter_y"
-        private const val DRAG_TIMEOUT_MS = 3000L
     }
 
     private fun buildLayoutParams(): WindowManager.LayoutParams {
@@ -60,8 +55,12 @@ class FloatingCounterManager(private val service: AccessibilityService) {
             WindowManager.LayoutParams.TYPE_PHONE
         }
 
-        val savedX = prefs.getInt(PREF_X, dpToPx(16f).toInt())
-        val savedY = prefs.getInt(PREF_Y, dpToPx(120f).toInt())
+        val (screenWidth, screenHeight) = getScreenDimensions()
+        val maxX = (screenWidth - dpToPx(60f).toInt()).coerceAtLeast(0)
+        val maxY = (screenHeight - dpToPx(40f).toInt()).coerceAtLeast(0)
+
+        val savedX = prefs.getInt(PREF_X, dpToPx(16f).toInt()).coerceIn(0, maxX)
+        val savedY = prefs.getInt(PREF_Y, dpToPx(120f).toInt()).coerceIn(0, maxY)
 
         return WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -118,10 +117,8 @@ class FloatingCounterManager(private val service: AccessibilityService) {
         counterTextView = tv
         overlayContainer = container
 
-        // Initialize layout params
         val params = windowLayoutParams ?: buildLayoutParams().also { windowLayoutParams = it }
 
-        // Touch listener for smooth drag-and-drop position adjustment
         var initialTouchX = 0f
         var initialTouchY = 0f
         var initialParamX = 0
@@ -132,9 +129,6 @@ class FloatingCounterManager(private val service: AccessibilityService) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     isDragging = true
-                    mainHandler.removeCallbacks(dragTimeoutRunnable)
-                    mainHandler.postDelayed(dragTimeoutRunnable, DRAG_TIMEOUT_MS)
-
                     initialTouchX = event.rawX
                     initialTouchY = event.rawY
                     initialParamX = lp.x
@@ -142,9 +136,6 @@ class FloatingCounterManager(private val service: AccessibilityService) {
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    mainHandler.removeCallbacks(dragTimeoutRunnable)
-                    mainHandler.postDelayed(dragTimeoutRunnable, DRAG_TIMEOUT_MS)
-
                     val dx = (event.rawX - initialTouchX).toInt()
                     val dy = (event.rawY - initialTouchY).toInt()
 
@@ -168,9 +159,7 @@ class FloatingCounterManager(private val service: AccessibilityService) {
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_OUTSIDE -> {
-                    mainHandler.removeCallbacks(dragTimeoutRunnable)
                     isDragging = false
-                    // Persist new coordinates permanently
                     prefs.edit()
                         .putInt(PREF_X, lp.x)
                         .putInt(PREF_Y, lp.y)
@@ -185,9 +174,9 @@ class FloatingCounterManager(private val service: AccessibilityService) {
     }
 
     fun showOrUpdate(count: Int, limit: Int = 50) {
-        // Enforce toggle state: if disabled, immediately hide and abort
-        if (!QuotaManager(service).isFloatingCounterEnabled) {
-            forceHide()
+        // Enforce toggle: if disabled, hide immediately and do not show
+        if (!quotaManager.isFloatingCounterEnabled) {
+            hide()
             return
         }
 
@@ -195,15 +184,14 @@ class FloatingCounterManager(private val service: AccessibilityService) {
         currentLimit = limit
         mainHandler.post {
             try {
-                if (!QuotaManager(service).isFloatingCounterEnabled) {
-                    forceHide()
+                if (!quotaManager.isFloatingCounterEnabled) {
+                    hide()
                     return@post
                 }
 
                 val container = getOrCreateOverlayView()
                 updateText(count, limit)
 
-                // If user is actively dragging the badge, do not touch WindowManager state
                 if (isDragging) {
                     return@post
                 }
@@ -215,7 +203,7 @@ class FloatingCounterManager(private val service: AccessibilityService) {
                         try {
                             windowManager.addView(container, lp)
                             isShowing = true
-                            Log.i(TAG, "Floating counter overlay attached to window.")
+                            Log.i(TAG, "Floating counter overlay attached to window ($count/$limit).")
                         } catch (e: IllegalStateException) {
                             isShowing = true
                         } catch (e: Exception) {
@@ -234,13 +222,9 @@ class FloatingCounterManager(private val service: AccessibilityService) {
     fun hide() {
         mainHandler.post {
             try {
-                // If user is actively dragging, wait for drag to complete before hiding
-                if (isDragging) {
-                    return@post
-                }
-
+                isDragging = false
                 val container = overlayContainer
-                if (isShowing && container != null && container.isAttachedToWindow) {
+                if (container != null && container.isAttachedToWindow) {
                     try {
                         windowManager.removeViewImmediate(container)
                     } catch (e: Exception) {
@@ -251,6 +235,9 @@ class FloatingCounterManager(private val service: AccessibilityService) {
                         }
                     }
                 }
+                if (isShowing) {
+                    Log.i(TAG, "Floating counter overlay hidden.")
+                }
                 isShowing = false
             } catch (e: Exception) {
                 Log.e(TAG, "Error in hide", e)
@@ -258,34 +245,8 @@ class FloatingCounterManager(private val service: AccessibilityService) {
         }
     }
 
-    fun forceHide() {
-        mainHandler.post {
-            try {
-                mainHandler.removeCallbacks(dragTimeoutRunnable)
-                isDragging = false
-
-                val container = overlayContainer
-                if (container != null && container.isAttachedToWindow) {
-                    try {
-                        windowManager.removeViewImmediate(container)
-                    } catch (e: Exception) {
-                        try {
-                            windowManager.removeView(container)
-                        } catch (e2: Exception) {
-                            Log.w(TAG, "forceHide removeView error: ${e2.message}")
-                        }
-                    }
-                }
-                isShowing = false
-            } catch (e: Exception) {
-                Log.e(TAG, "Error in forceHide", e)
-            }
-        }
-    }
-
     fun destroy() {
         mainHandler.post {
-            mainHandler.removeCallbacks(dragTimeoutRunnable)
             isDragging = false
             val container = overlayContainer
             if (container != null && container.isAttachedToWindow) {
