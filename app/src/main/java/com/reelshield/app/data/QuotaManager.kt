@@ -107,7 +107,7 @@ class QuotaManager(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_TOTAL_BLOCK, value).apply()
 
     var isFloatingCounterEnabled: Boolean
-        get() = prefs.getBoolean(KEY_SHOW_FLOATING_COUNTER, false)
+        get() = prefs.getBoolean(KEY_SHOW_FLOATING_COUNTER, true)
         set(value) = prefs.edit().putBoolean(KEY_SHOW_FLOATING_COUNTER, value).apply()
 
     fun resetTodayCounts() {

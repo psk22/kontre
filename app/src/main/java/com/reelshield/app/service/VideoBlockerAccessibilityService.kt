@@ -52,6 +52,15 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
     val isShortFormCurrentlyActive: Boolean
         get() = ::reelSessionTracker.isInitialized && reelSessionTracker.currentActiveHash != null
 
+    // Screen off receiver to immediately hide floating counter
+    private val screenReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == Intent.ACTION_SCREEN_OFF) {
+                cancelDwellTimer()
+            }
+        }
+    }
+
     // Debounce to prevent repeated intervention bursts
     private var lastInterventionTimestamp = 0L
 
@@ -251,16 +260,20 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
         floatingCounterManager = FloatingCounterManager(this).apply {
             onDismissRequested = {
-                quotaManager.isFloatingCounterEnabled = false
                 mainHandler.post {
                     android.widget.Toast.makeText(
                         applicationContext,
-                        "Floating counter badge removed. Re-enable in Kontre app.",
+                        "Floating counter dismissed for this session.",
                         android.widget.Toast.LENGTH_SHORT
                     ).show()
                 }
             }
         }
+
+        try {
+            val filter = IntentFilter(Intent.ACTION_SCREEN_OFF)
+            registerReceiver(screenReceiver, filter)
+        } catch (_: Exception) {}
 
         reelSessionTracker = ReelSessionTracker(
             serviceScope = serviceScope,
@@ -281,7 +294,7 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                     }
                 }
                 if (quotaManager.isFloatingCounterEnabled) {
-                    floatingCounterManager.showOrUpdate(newCount)
+                    floatingCounterManager.showOrUpdate(newCount, quotaManager.dailyLimit)
                 }
             },
             onLimitReachedWarning = { platform ->
@@ -489,6 +502,11 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
             return
         }
 
+        // Show/refresh floating overlay on vertical video feed immediately
+        if (quotaManager.isFloatingCounterEnabled) {
+            floatingCounterManager.showOrUpdate(quotaManager.totalCount, quotaManager.dailyLimit)
+        }
+
         // Extract composite unique fingerprint hash
         val fingerprintHash = extractReelFingerprint(scanNode)
         val platform = if (packageName == PACKAGE_YOUTUBE) "YouTube" else "Instagram"
@@ -510,8 +528,11 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
         if (::reelSessionTracker.isInitialized) {
             reelSessionTracker.onUserNavigatedAway()
         }
-        if (::floatingCounterManager.isInitialized && floatingCounterManager.isShowing) {
-            floatingCounterManager.hide()
+        if (::floatingCounterManager.isInitialized) {
+            floatingCounterManager.resetSessionDismissal()
+            if (floatingCounterManager.isShowing) {
+                floatingCounterManager.hide()
+            }
         }
     }
 
@@ -593,6 +614,22 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to log ejection event to database", e)
                 }
+            }
+
+            if (::floatingCounterManager.isInitialized && floatingCounterManager.isShowing) {
+                floatingCounterManager.hide()
+            }
+
+            mainHandler.post {
+                try {
+                    val limit = quotaManager.dailyLimit
+                    val platform = if (targetPackage == PACKAGE_YOUTUBE) "YouTube Shorts" else "Instagram Reels"
+                    android.widget.Toast.makeText(
+                        applicationContext,
+                        "🛑 Daily limit reached ($limit/$limit)! $platform blocked.",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                } catch (_: Exception) {}
             }
 
             Log.i(TAG, "Limit reached / Total Block: auto-ejecting from Reel/Short via GLOBAL_ACTION_BACK (Zero-Overlay).")
@@ -1474,6 +1511,9 @@ open class VideoBlockerAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        try {
+            unregisterReceiver(screenReceiver)
+        } catch (_: Exception) {}
         cancelPendingSettle()
         unregisterWatchdogReceiver()
         if (isWatcherBound) {

@@ -41,6 +41,14 @@ class FloatingCounterManager(private val service: AccessibilityService) {
     var onDismissRequested: (() -> Unit)? = null
 
     private var currentCount = 0
+    private var currentLimit = 50
+
+    @Volatile
+    private var isDismissedForSession = false
+
+    fun resetSessionDismissal() {
+        isDismissedForSession = false
+    }
 
     private val overlayLayoutParams by lazy {
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -61,7 +69,7 @@ class FloatingCounterManager(private val service: AccessibilityService) {
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = dpToPx(16f).toInt()
-            y = dpToPx(100f).toInt()
+            y = dpToPx(120f).toInt()
         }
     }
 
@@ -91,14 +99,16 @@ class FloatingCounterManager(private val service: AccessibilityService) {
         private const val TAG = "FloatingCounterManager"
     }
 
-    fun showOrUpdate(count: Int) {
+    fun showOrUpdate(count: Int, limit: Int = 50) {
+        if (isDismissedForSession) return
         currentCount = count
+        currentLimit = limit
         mainHandler.post {
             try {
                 if (isShowing && overlayView != null) {
-                    updateText(count)
+                    updateText(count, limit)
                 } else {
-                    createAndAttachOverlay(count)
+                    createAndAttachOverlay(count, limit)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error displaying floating counter overlay", e)
@@ -123,18 +133,31 @@ class FloatingCounterManager(private val service: AccessibilityService) {
     }
 
     @SuppressLint("ClickableViewAccessibility")
-    private fun createAndAttachOverlay(initialCount: Int) {
-        val badgeSize = dpToPx(44f).toInt()
+    private fun createAndAttachOverlay(initialCount: Int, initialLimit: Int) {
+        val minDim = dpToPx(38f).toInt()
+        val padH = dpToPx(12f).toInt()
+        val padV = dpToPx(6f).toInt()
 
         val container = FrameLayout(service).apply {
-            layoutParams = FrameLayout.LayoutParams(badgeSize, badgeSize)
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            )
+            minimumWidth = minDim
+            minimumHeight = minDim
+            setPadding(padH, padV, padH, padV)
             elevation = dpToPx(10f)
         }
 
+        val isOver = initialCount >= initialLimit && initialLimit > 0
         val backgroundDrawable = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(Color.parseColor("#EE1E1E2C")) // Sleek translucent dark plum
-            setStroke(dpToPx(1.5f).toInt(), Color.parseColor("#4DFF4A36")) // Subtle coral ember stroke
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dpToPx(20f)
+            setColor(Color.parseColor("#EE12141F")) // Sleek translucent midnight plum
+            setStroke(
+                dpToPx(1.5f).toInt(),
+                if (isOver) Color.parseColor("#FF4A36") else Color.parseColor("#55FF4A36")
+            )
         }
         container.background = backgroundDrawable
 
@@ -144,9 +167,9 @@ class FloatingCounterManager(private val service: AccessibilityService) {
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.CENTER
             )
-            text = "$initialCount"
-            textSize = 14f
-            setTextColor(Color.WHITE)
+            text = if (initialLimit > 0) "$initialCount / $initialLimit" else "$initialCount"
+            textSize = 13f
+            setTextColor(if (isOver) Color.parseColor("#FF4A36") else Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
         }
@@ -226,7 +249,8 @@ class FloatingCounterManager(private val service: AccessibilityService) {
                     hideDismissTarget()
 
                     if (isDroppedOnDismiss) {
-                        Log.i(TAG, "Floating counter dragged to dismiss target. Removing...")
+                        Log.i(TAG, "Floating counter dragged to dismiss target. Removing for this session...")
+                        isDismissedForSession = true
                         hide()
                         onDismissRequested?.invoke()
                     } else if (isDragging) {
@@ -260,11 +284,21 @@ class FloatingCounterManager(private val service: AccessibilityService) {
         overlayView = container
         windowManager.addView(container, overlayLayoutParams)
         isShowing = true
-        Log.i(TAG, "Floating counter badge displayed: '$currentCount'")
+        Log.i(TAG, "Floating counter badge displayed: '$currentCount / $currentLimit'")
     }
 
-    private fun updateText(count: Int) {
-        counterTextView?.text = "$count"
+    private fun updateText(count: Int, limit: Int) {
+        val isOver = count >= limit && limit > 0
+        counterTextView?.apply {
+            text = if (limit > 0) "$count / $limit" else "$count"
+            setTextColor(if (isOver) Color.parseColor("#FF4A36") else Color.WHITE)
+        }
+        overlayView?.let { container ->
+            (container.background as? GradientDrawable)?.setStroke(
+                dpToPx(1.5f).toInt(),
+                if (isOver) Color.parseColor("#FF4A36") else Color.parseColor("#55FF4A36")
+            )
+        }
     }
 
     private fun showDismissTarget() {
