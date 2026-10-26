@@ -1,4 +1,4 @@
-# Kontre (ReelShield) — Short-Form Video Blocker & Focus Guard
+# Kontre — Short-Form Video Blocker & Focus Guard
 
 > **A native Android digital wellbeing companion built with Kotlin & Jetpack Compose (Target SDK 35 / Android 15 ready).**  
 > Engineered to break compulsive doom-scrolling on **Instagram Reels** and **YouTube Shorts** without breaking messaging, search, or normal feed browsing.
