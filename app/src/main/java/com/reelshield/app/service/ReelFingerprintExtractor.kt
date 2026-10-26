@@ -31,7 +31,7 @@ object ReelFingerprintExtractor {
         }
     }
 
-    private const val MAX_POOL_CAPACITY = 128
+    private const val MAX_POOL_CAPACITY = 256
     private val entryPool = Array(MAX_POOL_CAPACITY) { ExtractorEntry() }
     private var poolIndex = 0
     private val traversalQueue = ArrayDeque<ExtractorEntry>(MAX_POOL_CAPACITY)
@@ -89,7 +89,7 @@ object ReelFingerprintExtractor {
         resetPool()
         traversalQueue.add(obtainEntry(rootNode, 0))
         var visitedCount = 0
-        val maxNodesToInspect = 100
+        val maxNodesToInspect = 250
 
         try {
             while (traversalQueue.isNotEmpty() && visitedCount < maxNodesToInspect) {
@@ -112,6 +112,7 @@ object ReelFingerprintExtractor {
                         resId.contains("channel_name") ||
                         resId.contains("user_name") ||
                         resId.contains("clips_author_name") ||
+                        resId.contains("clips_author_username") ||
                         resId.contains("profile_name")
                     ) {
                         if (text.isNotEmpty()) {
@@ -174,7 +175,7 @@ object ReelFingerprintExtractor {
 
                     if (isCaptionId && text.isNotEmpty()) {
                         captionPrefix = text.take(30).trim()
-                    } else if (text.length >= 10 && text != creatorUsername && !lowerText.contains("audio") && !lowerText.contains("music")) {
+                    } else if (text.length >= 10 && text != creatorUsername && !lowerText.contains("audio") && !lowerText.contains("music") && !lowerText.contains("search") && !lowerText.contains("response") && !lowerText.contains("comment")) {
                         captionPrefix = text.take(30).trim()
                     }
                 }
@@ -184,8 +185,8 @@ object ReelFingerprintExtractor {
                     break
                 }
 
-                // Depth-limited search: traverse only up to 7 levels deep
-                if (depth < 7) {
+                // Depth-limited search: traverse up to 35 levels deep for modern deep ViewPagers
+                if (depth < 35) {
                     val childCount = node.childCount
                     for (i in 0 until childCount) {
                         val child = node.getChild(i)

@@ -39,8 +39,8 @@ class ReelSessionTracker(
     private val TAG = "ReelSessionTracker"
 
     companion object {
-        const val DWELL_THRESHOLD_MS = 1500L
-        const val LRU_CAPACITY = 50
+        const val DWELL_THRESHOLD_MS = 1000L
+        const val LRU_CAPACITY = 100
     }
 
     private val lock = Any()
@@ -61,7 +61,7 @@ class ReelSessionTracker(
     var lastAllowedHash: String? = null
         private set
 
-    // Thread-safe LRU set of recently consumed hashes with capacity 50
+    // Thread-safe LRU set of recently consumed hashes with capacity 100
     val consumedHashes: LinkedHashSet<String> = object : LinkedHashSet<String>() {
         override fun add(element: String): Boolean {
             val added = super.add(element)
@@ -94,6 +94,8 @@ class ReelSessionTracker(
      * Evaluates candidate reelHash against activeReelHash and consumedHashes LRU.
      */
     fun onReelNodeDetected(reelHash: String, platform: String = "Instagram") {
+        if (reelHash.isBlank()) return
+
         synchronized(lock) {
             val isBlockEnabled = isPlatformBlockEnabled(platform)
 
@@ -125,23 +127,27 @@ class ReelSessionTracker(
 
             // Case 4: Already in consumedHashes: set activeReelHash = reelHash, do not start dwell timer
             if (consumedHashes.contains(reelHash)) {
-                Log.d(TAG, "Reel already in consumedHashes LRU ($reelHash). Updating active hash without dwell.")
+                Log.d(TAG, "Reel already in consumedHashes LRU ($reelHash). Setting active without dwell.")
                 activeReelHash = reelHash
                 cancelDwellTimerLocked()
                 return
             }
 
-            // Case 5: Genuinely new: cancel existing dwellJob, set activeReelHash, launch 1500ms debounce
-            Log.d(TAG, "New reel detected ($reelHash) on $platform. Launching 1500ms dwell timer.")
+            // Case 5: Genuinely new: cancel existing dwellJob, set activeReelHash, launch 1000ms debounce
+            Log.i(TAG, "New reel detected [$platform]: $reelHash. Launching ${DWELL_THRESHOLD_MS}ms dwell timer.")
             cancelDwellTimerLocked()
             activeReelHash = reelHash
 
+            val targetHash = reelHash
             dwellJob = serviceScope.launch(Dispatchers.Default) {
-                delay(DWELL_THRESHOLD_MS) // 1500ms
+                delay(DWELL_THRESHOLD_MS)
 
                 synchronized(lock) {
-                    if (activeReelHash == reelHash) {
-                        recordReelConsumed(reelHash, platform)
+                    if (activeReelHash == targetHash) {
+                        Log.i(TAG, "Dwell completed for $targetHash [$platform]. Recording consumed reel!")
+                        recordReelConsumed(targetHash, platform)
+                    } else {
+                        Log.d(TAG, "Dwell aborted: activeReelHash ($activeReelHash) != target ($targetHash)")
                     }
                 }
             }

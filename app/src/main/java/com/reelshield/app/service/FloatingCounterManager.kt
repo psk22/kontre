@@ -212,6 +212,10 @@ class FloatingCounterManager(private val service: AccessibilityService) {
                     } else {
                         isShowing = true
                     }
+                } else {
+                    try {
+                        windowManager.updateViewLayout(container, lp)
+                    } catch (_: Exception) {}
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error in showOrUpdate", e)

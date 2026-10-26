@@ -70,6 +70,26 @@ open class ContentTrackerService : AccessibilityService() {
     // Ejection rate-limiter to prevent multiple back presses from kicking the user out of the app
     private var lastEjectionTime = 0L
 
+    // Anti-flutter debouncer for navigating away (prevents scroll transitions from prematurely cancelling dwell)
+    private var pendingNavAwayRunnable: Runnable? = null
+
+    private fun cancelPendingNavAway() {
+        pendingNavAwayRunnable?.let {
+            mainHandler.removeCallbacks(it)
+            pendingNavAwayRunnable = null
+        }
+    }
+
+    private fun scheduleNavAway(delayMs: Long = 450L) {
+        if (pendingNavAwayRunnable != null) return
+        val runnable = Runnable {
+            pendingNavAwayRunnable = null
+            hideFloatingOverlay()
+        }
+        pendingNavAwayRunnable = runnable
+        mainHandler.postDelayed(runnable, delayMs)
+    }
+
     // Screen off broadcast receiver to immediately dismiss the floater when screen locks
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -118,6 +138,21 @@ open class ContentTrackerService : AccessibilityService() {
         fun testEject(): Boolean {
             activeInstance?.performGlobalAction(GLOBAL_ACTION_BACK)
             return activeInstance != null
+        }
+
+        fun isGenericText(text: String): Boolean {
+            val lower = text.lowercase().trim()
+            if (lower.isEmpty() || lower.length < 2) return true
+            return lower == "like" || lower == "view likes" || lower == "liked" ||
+                    lower == "dislike" || lower == "disliked" ||
+                    lower == "comment" || lower == "view comments" || lower == "comments" ||
+                    lower == "share" || lower == "repost" || lower == "save" || lower == "more" ||
+                    lower == "audio" || lower == "original audio" || lower == "original sound" ||
+                    lower == "sound" || lower == "music" ||
+                    lower == "follow" || lower == "view" || lower == "ai content" ||
+                    lower == "search" || lower == "search and explore" || lower == "home" ||
+                    lower == "reels" || lower == "shorts" || lower == "remix" ||
+                    lower.startsWith("double tap to")
         }
     }
 
@@ -230,11 +265,11 @@ open class ContentTrackerService : AccessibilityService() {
         val isVerticalFeed = confirmYouTubeVerticalFeed(rootNode, event, analysis)
 
         if (!isVerticalFeed) {
-            // User is on home feed, search, normal 16:9 video, or comments - hide floating overlay immediately
-            hideFloatingOverlay()
-            reelSessionTracker.onUserNavigatedAway()
+            scheduleNavAway()
             return
         }
+
+        cancelPendingNavAway()
 
         // Check if daily limit already reached: auto-block immediate entrance (unless finishing allowed video)
         if (quotaManager.isLimitReached && quotaManager.isYouTubeBlockEnabled && reelSessionTracker.lastAllowedHash == null) {
@@ -248,10 +283,11 @@ open class ContentTrackerService : AccessibilityService() {
         // Show/refresh floating overlay on vertical feed (only if enabled)
         updateFloatingOverlayState()
 
-        val videoFingerprint = ReelFingerprintExtractor.extractReelFingerprint(rootNode)
-            ?: analysis.getVideoKey().ifEmpty { null }
+        val videoFingerprint = analysis.getVideoKey().ifEmpty {
+            ReelFingerprintExtractor.extractReelFingerprint(rootNode) ?: ""
+        }
 
-        if (videoFingerprint != null) {
+        if (videoFingerprint.isNotEmpty()) {
             reelSessionTracker.onReelNodeDetected(videoFingerprint, "YouTube Shorts")
         }
     }
@@ -262,14 +298,13 @@ open class ContentTrackerService : AccessibilityService() {
         // Multi-factor Vertical Video Feed Heuristic
         val analysis = InstagramFeedAnalysis()
         val isVerticalFeed = confirmInstagramVerticalFeed(rootNode, event, analysis)
-        Log.i(TAG, "handleInstagramEvent: isVerticalFeed=$isVerticalFeed, reelsTab=${analysis.isReelsTabSelected}, nonReelsTab=${analysis.isNonReelsTabSelected}, bottomNav=${analysis.bottomNavFound}, storiesTray=${analysis.hasStoriesTray}, clipsContainer=${analysis.hasFullScreenClipsContainer}, actions=${analysis.stackedRightEdgeActions}, surface9x16=${analysis.has9by16VideoSurface}")
 
         if (!isVerticalFeed) {
-            // User is on home feed, stories, DMs, profile, or explorer - hide floating overlay immediately
-            hideFloatingOverlay()
-            reelSessionTracker.onUserNavigatedAway()
+            scheduleNavAway()
             return
         }
+
+        cancelPendingNavAway()
 
         // Check if daily limit already reached: auto-block immediate entrance (unless finishing allowed video)
         if (quotaManager.isLimitReached && quotaManager.isInstagramBlockEnabled && reelSessionTracker.lastAllowedHash == null) {
@@ -283,10 +318,11 @@ open class ContentTrackerService : AccessibilityService() {
         // Show/refresh floating overlay on vertical feed (only if enabled)
         updateFloatingOverlayState()
 
-        val videoFingerprint = ReelFingerprintExtractor.extractReelFingerprint(rootNode)
-            ?: analysis.getVideoKey().ifEmpty { null }
+        val videoFingerprint = analysis.getVideoKey().ifEmpty {
+            ReelFingerprintExtractor.extractReelFingerprint(rootNode) ?: ""
+        }
 
-        if (videoFingerprint != null) {
+        if (videoFingerprint.isNotEmpty()) {
             reelSessionTracker.onReelNodeDetected(videoFingerprint, "Instagram Reels")
         }
     }
@@ -303,6 +339,7 @@ open class ContentTrackerService : AccessibilityService() {
     }
 
     fun hideFloatingOverlay() {
+        cancelPendingNavAway()
         stopLivenessWatchdog()
         floatingCounterManager.hide()
         reelSessionTracker.onUserNavigatedAway()
@@ -324,8 +361,8 @@ open class ContentTrackerService : AccessibilityService() {
     /**
      * Active Watchdog: Periodically validates that the user is genuinely still
      * watching short-form videos while the floating badge is showing.
-     * Guarantees the popup disappears within ~250ms when leaving Shorts/Reels or app,
-     * and strictly blocks once the daily limit (e.g. 50) is reached.
+     * Guarantees the popup disappears when leaving Shorts/Reels or app,
+     * with anti-flutter debounce during scroll transitions.
      */
     private val livenessWatchdog = object : Runnable {
         override fun run() {
@@ -375,9 +412,11 @@ open class ContentTrackerService : AccessibilityService() {
             }
 
             if (!isStillInVerticalFeed) {
-                hideFloatingOverlay()
+                scheduleNavAway()
+                mainHandler.postDelayed(this, WATCHDOG_INTERVAL_MS)
                 return
             }
+            cancelPendingNavAway()
 
             // Daily limit enforcement inside watchdog: if limit hit and block enabled, redirect gracefully!
             if (quotaManager.isLimitReached) {
@@ -557,53 +596,35 @@ open class ContentTrackerService : AccessibilityService() {
         // Author / Channel heuristic
         if (out.videoAuthor.isEmpty()) {
             if (viewId.contains("channel_name") || viewId.contains("author") || viewId.contains("user_name")) {
-                if (rawText.isNotEmpty()) out.videoAuthor = rawText.trim()
-                else if (rawDesc.isNotEmpty()) out.videoAuthor = rawDesc.trim()
+                val candidate = if (rawText.isNotEmpty()) rawText.trim() else rawDesc.trim()
+                if (!isGenericText(candidate)) out.videoAuthor = candidate
             } else if (rawDesc.startsWith("@") || rawText.startsWith("@")) {
-                out.videoAuthor = if (rawText.isNotEmpty()) rawText.trim() else rawDesc.trim()
+                val candidate = if (rawText.isNotEmpty()) rawText.trim() else rawDesc.trim()
+                if (!isGenericText(candidate)) out.videoAuthor = candidate
             }
         }
 
         // Video Title heuristic
         if (out.videoTitle.isEmpty()) {
-            if (viewId.contains("title") || viewId.contains("video_title") || viewId.contains("reel_title")) {
-                if (rawText.isNotEmpty()) out.videoTitle = rawText.trim()
-                else if (rawDesc.isNotEmpty()) out.videoTitle = rawDesc.trim()
+            if (viewId.contains("title") || viewId.contains("video_title") || viewId.contains("reel_title") || viewId.contains("shorts_title")) {
+                val candidate = if (rawText.isNotEmpty()) rawText.trim() else rawDesc.trim()
+                if (!isGenericText(candidate)) out.videoTitle = candidate
             } else if (bounds.left < (screen.width * 0.70f) && bounds.top > (screen.height * 0.60f)) {
                 val candidate = when {
-                    rawText.length > 5 -> rawText
-                    rawDesc.length > 5 -> rawDesc
+                    rawText.length > 5 -> rawText.trim()
+                    rawDesc.length > 5 -> rawDesc.trim()
                     else -> ""
                 }
-                val candidateLower = candidate.lowercase()
-                val isSystemOrButton = candidateLower.contains("home") ||
-                        candidateLower.contains("shorts") ||
-                        candidateLower.contains("subscriptions") ||
-                        candidateLower.contains("subscribe") ||
-                        candidateLower.contains("channel") ||
-                        candidateLower.contains("like this video") ||
-                        candidateLower.contains("comments") ||
-                        candidateLower.contains("save") ||
-                        candidateLower.contains("share") ||
-                        candidateLower.contains("remix") ||
-                        candidateLower.contains("sound") ||
-                        candidateLower.contains("more") ||
-                        candidateLower.contains("search") ||
-                        candidateLower.contains("minute") ||
-                        candidateLower.contains("second")
-
-                if (candidate.isNotEmpty() && !isSystemOrButton) {
-                    out.videoTitle = candidate.trim()
+                if (candidate.isNotEmpty() && !isGenericText(candidate)) {
+                    out.videoTitle = candidate
                 }
             }
         }
 
-        // Backup signature from unique like / sound action description
-        if (out.backupSignature.isEmpty()) {
-            if (contentDesc.contains("like this video along with")) {
-                out.backupSignature = rawDesc.trim()
-            } else if (contentDesc.contains("using this sound")) {
-                out.backupSignature = rawDesc.trim()
+        // Metrics from sound or like action description
+        if (contentDesc.contains("like this video along with") || contentDesc.contains("using this sound") || contentDesc.contains("subscribers")) {
+            if (!isGenericText(rawDesc)) {
+                out.recordMetric(rawDesc.trim())
             }
         }
 
@@ -780,26 +801,49 @@ open class ContentTrackerService : AccessibilityService() {
             out.has9by16VideoSurface = true
         }
 
-        // Extract author / caption / audio
+        // Extract author / caption / audio / metrics
         if (out.reelAuthor.isEmpty()) {
-            if (viewId.contains("profile_name") || viewId.contains("user_name") || viewId.contains("username")) {
-                if (rawText.isNotEmpty()) out.reelAuthor = rawText.trim()
+            if (viewId.contains("clips_author_username") || viewId.contains("profile_name") || viewId.contains("user_name") || viewId.contains("username")) {
+                val candidate = if (rawText.isNotEmpty()) rawText.trim() else rawDesc.trim()
+                if (!isGenericText(candidate)) {
+                    out.reelAuthor = candidate
+                }
             } else if (rawDesc.startsWith("reel by ", ignoreCase = true)) {
-                out.reelAuthor = rawDesc.trim()
+                val candidate = rawDesc.substringAfter("reel by ", "").substringBefore(".").trim()
+                if (!isGenericText(candidate)) {
+                    out.reelAuthor = candidate
+                }
+            } else if (rawDesc.startsWith("profile picture of ", ignoreCase = true)) {
+                val candidate = rawDesc.substringAfter("profile picture of ", "").trim()
+                if (!isGenericText(candidate)) {
+                    out.reelAuthor = candidate
+                }
             }
         }
 
         if (out.reelAudioOrCaption.isEmpty()) {
-            if (viewId.contains("music_title") || viewId.contains("audio_track") || viewId.contains("caption")) {
-                if (rawText.isNotEmpty()) out.reelAudioOrCaption = rawText.trim()
-                else if (rawDesc.isNotEmpty()) out.reelAudioOrCaption = rawDesc.trim()
+            if (viewId.contains("clips_caption") || viewId.contains("caption") || viewId.contains("subtitle") || viewId.contains("description")) {
+                val candidate = if (rawText.isNotEmpty()) rawText.trim() else rawDesc.trim()
+                if (!isGenericText(candidate)) {
+                    out.reelAudioOrCaption = candidate.take(40)
+                }
             }
         }
 
-        if (out.backupSignature.isEmpty()) {
-            if (viewId.contains("like_count") || rawDesc.contains("like", ignoreCase = true)) {
-                if (rawText.isNotEmpty()) out.backupSignature = rawText.trim()
-                else if (rawDesc.isNotEmpty()) out.backupSignature = rawDesc.trim()
+        if (out.audioTitle.isEmpty()) {
+            if (viewId.contains("music") || viewId.contains("audio") || viewId.contains("sound")) {
+                val candidate = if (rawText.isNotEmpty()) rawText.trim() else rawDesc.trim()
+                if (!isGenericText(candidate)) {
+                    out.audioTitle = candidate.take(40)
+                }
+            }
+        }
+
+        // Metrics: comment count, repost count, save count, like count (with numbers)
+        if (viewId.contains("comment_count") || viewId.contains("save_count") || viewId.contains("repost_count") || viewId.contains("like_count")) {
+            val candidate = if (rawText.isNotEmpty()) rawText.trim() else rawDesc.trim()
+            if (!isGenericText(candidate)) {
+                out.recordMetric(candidate)
             }
         }
 
@@ -894,7 +938,8 @@ open class ContentTrackerService : AccessibilityService() {
 
         var videoAuthor: String = ""
         var videoTitle: String = ""
-        var backupSignature: String = ""
+        var audioTrack: String = ""
+        val metricsList = mutableListOf<String>()
 
         private val actionCenterYs = mutableListOf<Int>()
 
@@ -907,12 +952,24 @@ open class ContentTrackerService : AccessibilityService() {
         val stackedRightEdgeActions: Int
             get() = actionCenterYs.size
 
+        fun recordMetric(metric: String) {
+            if (metricsList.size < 4 && !metricsList.contains(metric)) {
+                metricsList.add(metric)
+            }
+        }
+
         fun getVideoKey(): String {
+            val author = videoAuthor.trim()
+            val title = videoTitle.trim().ifEmpty { audioTrack.trim() }
+            val metrics = metricsList.joinToString(";")
+
             return when {
-                videoAuthor.isNotEmpty() && videoTitle.isNotEmpty() -> "$videoAuthor|$videoTitle"
-                videoAuthor.isNotEmpty() -> videoAuthor
-                videoTitle.isNotEmpty() -> videoTitle
-                backupSignature.isNotEmpty() -> backupSignature
+                author.isNotEmpty() && title.isNotEmpty() -> "$author|$title"
+                author.isNotEmpty() && metrics.isNotEmpty() -> "$author|$metrics"
+                author.isNotEmpty() -> author
+                title.isNotEmpty() && metrics.isNotEmpty() -> "$title|$metrics"
+                title.isNotEmpty() -> title
+                metrics.isNotEmpty() -> "yt_m:$metrics"
                 else -> ""
             }
         }
@@ -930,7 +987,8 @@ open class ContentTrackerService : AccessibilityService() {
 
         var reelAuthor: String = ""
         var reelAudioOrCaption: String = ""
-        var backupSignature: String = ""
+        var audioTitle: String = ""
+        val metricsList = mutableListOf<String>()
 
         private val actionCenterYs = mutableListOf<Int>()
 
@@ -943,12 +1001,24 @@ open class ContentTrackerService : AccessibilityService() {
         val stackedRightEdgeActions: Int
             get() = actionCenterYs.size
 
+        fun recordMetric(metric: String) {
+            if (metricsList.size < 4 && !metricsList.contains(metric)) {
+                metricsList.add(metric)
+            }
+        }
+
         fun getVideoKey(): String {
+            val author = reelAuthor.trim()
+            val caption = reelAudioOrCaption.trim().ifEmpty { audioTitle.trim() }
+            val metrics = metricsList.joinToString(";")
+
             return when {
-                reelAuthor.isNotEmpty() && reelAudioOrCaption.isNotEmpty() -> "$reelAuthor|$reelAudioOrCaption"
-                reelAuthor.isNotEmpty() -> reelAuthor
-                reelAudioOrCaption.isNotEmpty() -> reelAudioOrCaption
-                backupSignature.isNotEmpty() -> backupSignature
+                author.isNotEmpty() && caption.isNotEmpty() -> "$author|$caption"
+                author.isNotEmpty() && metrics.isNotEmpty() -> "$author|$metrics"
+                author.isNotEmpty() -> author
+                caption.isNotEmpty() && metrics.isNotEmpty() -> "$caption|$metrics"
+                caption.isNotEmpty() -> caption
+                metrics.isNotEmpty() -> "ig_m:$metrics"
                 else -> ""
             }
         }
