@@ -37,10 +37,13 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import kotlin.math.roundToInt
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -163,7 +166,8 @@ fun DashboardScreen(quotaManager: QuotaManager) {
     var timeSaved by remember { mutableIntStateOf(quotaManager.timeSavedMinutes) }
 
     val totalCount = reelsCount + shortsCount
-    val dailyLimit = quotaManager.dailyLimit
+    var targetDailyLimit by remember { mutableIntStateOf(quotaManager.targetDailyLimit) }
+    var dailyLimit by remember { mutableIntStateOf(quotaManager.dailyLimit) }
 
     // Toggle States
     var blockIg by remember { mutableStateOf(quotaManager.isInstagramBlockEnabled) }
@@ -195,11 +199,19 @@ fun DashboardScreen(quotaManager: QuotaManager) {
 
     // Immediate reactive updates via StateFlow
     LaunchedEffect(Unit) {
-        quotaManager.totalCountFlow.collect {
-            reelsCount = quotaManager.reelsCount
-            shortsCount = quotaManager.shortsCount
-            blockedCount = quotaManager.blockedTodayCount
-            timeSaved = quotaManager.timeSavedMinutes
+        launch {
+            quotaManager.totalCountFlow.collect {
+                reelsCount = quotaManager.reelsCount
+                shortsCount = quotaManager.shortsCount
+                blockedCount = quotaManager.blockedTodayCount
+                timeSaved = quotaManager.timeSavedMinutes
+            }
+        }
+        launch {
+            quotaManager.dailyLimitFlow.collect { newLimit ->
+                dailyLimit = newLimit
+                targetDailyLimit = quotaManager.targetDailyLimit
+            }
         }
     }
 
@@ -241,7 +253,7 @@ fun DashboardScreen(quotaManager: QuotaManager) {
 
     val progressColor = when {
         quotaManager.isLimitReached -> CoralEmber
-        totalCount >= 40 -> CoralEmber
+        dailyLimit > 0 && totalCount >= (dailyLimit * 0.8f) -> CoralEmber
         else -> StatusGreen
     }
 
@@ -501,6 +513,115 @@ fun DashboardScreen(quotaManager: QuotaManager) {
                         )
                     }
                 }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // --- Daily Quota Slider Section (till 50) ---
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(ElevatedPlumDark, RoundedCornerShape(16.dp))
+                        .padding(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "DAILY QUOTA LIMIT",
+                                color = AshText,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp
+                            )
+                            Text(
+                                text = if (totalBlock) "Locked to 0 by Total Block Mode" else "Cap short-form videos per day",
+                                color = FogText,
+                                fontSize = 11.sp
+                            )
+                        }
+                        Text(
+                            text = if (totalBlock) "0 (Locked)" else "$targetDailyLimit / 50",
+                            color = if (totalBlock) CoralEmber else PureWhite,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Slider(
+                        value = targetDailyLimit.toFloat(),
+                        onValueChange = { newVal ->
+                            val limit = newVal.roundToInt()
+                            targetDailyLimit = limit
+                            quotaManager.setDailyLimit(limit)
+                        },
+                        valueRange = 5f..50f,
+                        steps = 8, // Snap points: 5, 10, 15, 20, 25, 30, 35, 40, 45, 50
+                        enabled = !totalBlock,
+                        colors = SliderDefaults.colors(
+                            thumbColor = PureWhite,
+                            activeTrackColor = CoralEmber,
+                            inactiveTrackColor = WhisperBorder.copy(alpha = 0.2f),
+                            activeTickColor = Color.Transparent,
+                            inactiveTickColor = Color.Transparent,
+                            disabledThumbColor = FogText,
+                            disabledActiveTrackColor = ElevatedPlum,
+                            disabledInactiveTrackColor = ElevatedPlum
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = "5 (Strict)", color = FogText, fontSize = 10.sp)
+                        Text(text = "25 (Balanced)", color = FogText, fontSize = 10.sp)
+                        Text(text = "50 (Max Allowance)", color = FogText, fontSize = 10.sp)
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Quick Preset Chips (10, 25, 50)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(10, 25, 50).forEach { preset ->
+                            val isSelected = !totalBlock && targetDailyLimit == preset
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .background(
+                                        color = if (isSelected) CoralEmber else ElevatedPlum,
+                                        shape = RoundedCornerShape(100.dp)
+                                    )
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (isSelected) CoralEmber else WhisperBorder.copy(alpha = 0.3f),
+                                        shape = RoundedCornerShape(100.dp)
+                                    )
+                                    .clickable(enabled = !totalBlock) {
+                                        targetDailyLimit = preset
+                                        quotaManager.setDailyLimit(preset)
+                                    }
+                                    .padding(vertical = 7.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "$preset videos",
+                                    color = if (isSelected) PureWhite else AshText,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -694,6 +815,7 @@ fun DashboardScreen(quotaManager: QuotaManager) {
                     onCheckedChange = {
                         totalBlock = it
                         quotaManager.isTotalBlockEnabled = it
+                        dailyLimit = quotaManager.dailyLimit
                     }
                 )
 

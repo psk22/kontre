@@ -82,21 +82,30 @@ class ReelSessionTracker(
     private val _sessionReelCount = MutableStateFlow(quotaManager.totalCount)
     val sessionReelCount: StateFlow<Int> = _sessionReelCount.asStateFlow()
 
+    private fun isPlatformBlockEnabled(platform: String): Boolean {
+        return when {
+            platform.contains("YouTube", ignoreCase = true) -> quotaManager.isYouTubeBlockEnabled
+            else -> quotaManager.isInstagramBlockEnabled
+        }
+    }
+
     /**
      * Dwell-Gated Counter & Deduplication Pipeline:
      * Evaluates candidate reelHash against activeReelHash and consumedHashes LRU.
      */
     fun onReelNodeDetected(reelHash: String, platform: String = "Instagram") {
         synchronized(lock) {
-            // Case 1: Total Block Mode (0 allowance) - Eject immediately
-            if (quotaManager.isTotalBlockEnabled) {
+            val isBlockEnabled = isPlatformBlockEnabled(platform)
+
+            // Case 1: Total Block Mode (0 allowance) - Eject immediately if platform block is active
+            if (quotaManager.isTotalBlockEnabled && isBlockEnabled) {
                 Log.w(TAG, "Total Block Mode active. Ejecting immediately!")
                 onEjectionRequired(platform)
                 return
             }
 
             // Case 2: Daily quota already reached
-            if (quotaManager.isLimitReached) {
+            if (quotaManager.isLimitReached && isBlockEnabled) {
                 // Allow finishing the video that triggered the warning
                 if (lastAllowedHash != null && reelHash == lastAllowedHash) {
                     activeReelHash = reelHash
@@ -173,26 +182,29 @@ class ReelSessionTracker(
         onCountUpdated(newCount, platform)
 
         val limit = quotaManager.dailyLimit
+        val isBlockEnabled = isPlatformBlockEnabled(platform)
 
-        when {
-            // Case A: Total Block Mode - Immediate Ejection
-            quotaManager.isTotalBlockEnabled -> {
-                Log.w(TAG, "Total Block Mode active. Ejecting!")
-                onEjectionRequired(platform)
-            }
+        if (isBlockEnabled) {
+            when {
+                // Case A: Total Block Mode - Immediate Ejection
+                quotaManager.isTotalBlockEnabled -> {
+                    Log.w(TAG, "Total Block Mode active. Ejecting!")
+                    onEjectionRequired(platform)
+                }
 
-            // Case B: Exactly hit daily limit on this video (e.g. 50/50)!
-            // Deliver warning! Allow finishing this 50th video.
-            limit in 1..newCount && newCount == limit -> {
-                Log.w(TAG, "Daily quota of $limit reached on video $reelHash. Giving warning. Next video will be blocked!")
-                lastAllowedHash = reelHash
-                onLimitReachedWarning(platform)
-            }
+                // Case B: Exactly hit daily limit on this video (e.g. 50/50)!
+                // Deliver warning! Allow finishing this 50th video.
+                limit in 1..newCount && newCount == limit -> {
+                    Log.w(TAG, "Daily quota of $limit reached on video $reelHash. Giving warning. Next video will be blocked!")
+                    lastAllowedHash = reelHash
+                    onLimitReachedWarning(platform)
+                }
 
-            // Case C: Exceeded limit (51+)
-            limit in 1..<newCount -> {
-                Log.w(TAG, "Daily quota exceeded ($newCount > $limit). Ejecting!")
-                onEjectionRequired(platform)
+                // Case C: Exceeded limit (51+)
+                limit in 1..<newCount -> {
+                    Log.w(TAG, "Daily quota exceeded ($newCount > $limit). Ejecting!")
+                    onEjectionRequired(platform)
+                }
             }
         }
 

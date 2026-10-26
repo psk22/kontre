@@ -56,6 +56,9 @@ class QuotaManager(context: Context) {
     private val _reelsCountFlow = MutableStateFlow(reelsCount)
     val reelsCountFlow: StateFlow<Int> = _reelsCountFlow.asStateFlow()
 
+    private val _dailyLimitFlow = MutableStateFlow(if (prefs.getBoolean(KEY_TOTAL_BLOCK, false)) 0 else prefs.getInt(KEY_DAILY_LIMIT, DEFAULT_DAILY_LIMIT).coerceIn(5, 50))
+    val dailyLimitFlow: StateFlow<Int> = _dailyLimitFlow.asStateFlow()
+
     private fun getTodayDateString(): String {
         return dateFormat.format(Date())
     }
@@ -94,7 +97,10 @@ class QuotaManager(context: Context) {
 
     var isTotalBlockEnabled: Boolean
         get() = prefs.getBoolean(KEY_TOTAL_BLOCK, false)
-        set(value) = prefs.edit().putBoolean(KEY_TOTAL_BLOCK, value).apply()
+        set(value) {
+            prefs.edit().putBoolean(KEY_TOTAL_BLOCK, value).apply()
+            _dailyLimitFlow.value = dailyLimit
+        }
 
     var isFloatingCounterEnabled: Boolean
         get() = prefs.getBoolean(KEY_SHOW_FLOATING_COUNTER, true)
@@ -118,10 +124,15 @@ class QuotaManager(context: Context) {
 
     // --- Daily Limit & Usage ---
     val dailyLimit: Int
-        get() = if (isTotalBlockEnabled) 0 else prefs.getInt(KEY_DAILY_LIMIT, DEFAULT_DAILY_LIMIT)
+        get() = if (isTotalBlockEnabled) 0 else targetDailyLimit
+
+    val targetDailyLimit: Int
+        get() = prefs.getInt(KEY_DAILY_LIMIT, DEFAULT_DAILY_LIMIT).coerceIn(5, 50)
 
     fun setDailyLimit(limit: Int) {
-        prefs.edit().putInt(KEY_DAILY_LIMIT, limit).apply()
+        val clamped = limit.coerceIn(5, 50)
+        prefs.edit().putInt(KEY_DAILY_LIMIT, clamped).apply()
+        _dailyLimitFlow.value = dailyLimit
     }
 
     val reelsCount: Int
@@ -186,8 +197,8 @@ class QuotaManager(context: Context) {
     @Synchronized
     fun recordConsumedReel(hash: String, platform: String, timestamp: Long = System.currentTimeMillis()): Int {
         checkAndResetDaily()
-        return when (platform) {
-            "YouTube" -> incrementShorts()
+        return when {
+            platform.contains("YouTube", ignoreCase = true) -> incrementShorts()
             else -> incrementReels()
         }
     }

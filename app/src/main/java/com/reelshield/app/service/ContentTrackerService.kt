@@ -16,6 +16,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import android.widget.Toast
 import com.reelshield.app.data.QuotaManager
+import com.reelshield.app.data.rules.DynamicRuleEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -29,14 +30,42 @@ open class ContentTrackerService : AccessibilityService() {
     val mainHandler = Handler(Looper.getMainLooper())
 
     protected val quotaManager by lazy { QuotaManager(this) }
-
     protected val floatingCounterManager by lazy { FloatingCounterManager(this) }
+    protected val dynamicRuleEngine by lazy { DynamicRuleEngine.getInstance(applicationContext) }
 
-    // Debounce and active video signature tracking per package
-    private var lastYouTubeEventTime = 0L
-    private var lastInstagramEventTime = 0L
-    private var lastYouTubeVideoKey = ""
-    private var lastInstagramVideoKey = ""
+    protected val reelSessionTracker by lazy {
+        ReelSessionTracker(
+            serviceScope = serviceScope,
+            quotaManager = quotaManager,
+            onCountUpdated = { newCount, platform ->
+                Log.i(TAG, "ReelSessionTracker count updated: $newCount on $platform")
+                if (quotaManager.isFloatingCounterEnabled) {
+                    mainHandler.post {
+                        floatingCounterManager.showOrUpdate(newCount, quotaManager.dailyLimit)
+                        startLivenessWatchdog()
+                    }
+                }
+            },
+            onLimitReachedWarning = { platform ->
+                Log.w(TAG, "ReelSessionTracker limit reached warning on $platform")
+                mainHandler.post {
+                    Toast.makeText(
+                        applicationContext,
+                        "⚠️ Daily limit of ${quotaManager.dailyLimit} reached on this video! Next will be blocked.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            },
+            onEjectionRequired = { platform ->
+                Log.w(TAG, "ReelSessionTracker ejection required on $platform")
+                val targetPkg = when {
+                    platform.contains("YouTube", ignoreCase = true) -> PACKAGE_YOUTUBE
+                    else -> PACKAGE_INSTAGRAM
+                }
+                ejectFromVerticalFeed(targetPkg, null, platform)
+            }
+        )
+    }
 
     // Ejection rate-limiter to prevent multiple back presses from kicking the user out of the app
     private var lastEjectionTime = 0L
@@ -123,6 +152,7 @@ open class ContentTrackerService : AccessibilityService() {
     override fun onUnbind(intent: Intent?): Boolean {
         isServiceRunning = false
         hideFloatingOverlay()
+        reelSessionTracker.clearSession()
         Log.i(TAG, "ContentTrackerService unbound.")
         return super.onUnbind(intent)
     }
@@ -133,6 +163,7 @@ open class ContentTrackerService : AccessibilityService() {
             activeInstance = null
         }
         hideFloatingOverlay()
+        reelSessionTracker.clearSession()
         try {
             unregisterReceiver(screenReceiver)
         } catch (_: Exception) {}
@@ -201,12 +232,12 @@ open class ContentTrackerService : AccessibilityService() {
         if (!isVerticalFeed) {
             // User is on home feed, search, normal 16:9 video, or comments - hide floating overlay immediately
             hideFloatingOverlay()
-            lastYouTubeVideoKey = ""
+            reelSessionTracker.onUserNavigatedAway()
             return
         }
 
-        // Check if daily limit already reached: auto-block immediate entrance!
-        if (quotaManager.isLimitReached && quotaManager.isYouTubeBlockEnabled) {
+        // Check if daily limit already reached: auto-block immediate entrance (unless finishing allowed video)
+        if (quotaManager.isLimitReached && quotaManager.isYouTubeBlockEnabled && reelSessionTracker.lastAllowedHash == null) {
             if (quotaManager.isFloatingCounterEnabled) {
                 floatingCounterManager.showOrUpdate(quotaManager.totalCount, quotaManager.dailyLimit)
             }
@@ -217,29 +248,11 @@ open class ContentTrackerService : AccessibilityService() {
         // Show/refresh floating overlay on vertical feed (only if enabled)
         updateFloatingOverlayState()
 
-        val videoKey = analysis.getVideoKey()
-        val currentTime = System.currentTimeMillis()
-        val isNewVideo = videoKey.isNotEmpty() && videoKey != lastYouTubeVideoKey
-        val isScroll = event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED
-        val isFirstOpen = lastYouTubeVideoKey.isEmpty() && videoKey.isNotEmpty()
+        val videoFingerprint = ReelFingerprintExtractor.extractReelFingerprint(rootNode)
+            ?: analysis.getVideoKey().ifEmpty { null }
 
-        if (isNewVideo || isScroll || isFirstOpen) {
-            if (currentTime - lastYouTubeEventTime >= DEBOUNCE_DELAY_MS) {
-                lastYouTubeEventTime = currentTime
-                if (videoKey.isNotEmpty()) {
-                    lastYouTubeVideoKey = videoKey
-                }
-                val eventName = if (isNewVideo) "VIDEO_TRANSITION" else getEventName(event.eventType)
-                Log.i(TAG, ">> [CONFIRMED VERTICAL FEED] YouTube Shorts | Event: $eventName | Key: '$videoKey'")
-
-                dispatchDetection(
-                    targetPackage = PACKAGE_YOUTUBE,
-                    targetPlatform = "YouTube Shorts",
-                    eventType = eventName
-                )
-            } else if (isNewVideo) {
-                lastYouTubeVideoKey = videoKey
-            }
+        if (videoFingerprint != null) {
+            reelSessionTracker.onReelNodeDetected(videoFingerprint, "YouTube Shorts")
         }
     }
 
@@ -249,17 +262,17 @@ open class ContentTrackerService : AccessibilityService() {
         // Multi-factor Vertical Video Feed Heuristic
         val analysis = InstagramFeedAnalysis()
         val isVerticalFeed = confirmInstagramVerticalFeed(rootNode, event, analysis)
-        Log.i(TAG, "handleInstagramEvent: isVerticalFeed=$isVerticalFeed, reelsTab=${analysis.isReelsTabSelected}, nonReelsTab=${analysis.isNonReelsTabSelected}, bottomNav=${analysis.bottomNavFound}, storiesTray=${analysis.hasStoriesTray}, clipsContainer=${analysis.hasFullScreenClipsContainer}, actions=${analysis.stackedRightEdgeActions}")
+        Log.i(TAG, "handleInstagramEvent: isVerticalFeed=$isVerticalFeed, reelsTab=${analysis.isReelsTabSelected}, nonReelsTab=${analysis.isNonReelsTabSelected}, bottomNav=${analysis.bottomNavFound}, storiesTray=${analysis.hasStoriesTray}, clipsContainer=${analysis.hasFullScreenClipsContainer}, actions=${analysis.stackedRightEdgeActions}, surface9x16=${analysis.has9by16VideoSurface}")
 
         if (!isVerticalFeed) {
             // User is on home feed, stories, DMs, profile, or explorer - hide floating overlay immediately
             hideFloatingOverlay()
-            lastInstagramVideoKey = ""
+            reelSessionTracker.onUserNavigatedAway()
             return
         }
 
-        // Check if daily limit already reached: auto-block immediate entrance!
-        if (quotaManager.isLimitReached && quotaManager.isInstagramBlockEnabled) {
+        // Check if daily limit already reached: auto-block immediate entrance (unless finishing allowed video)
+        if (quotaManager.isLimitReached && quotaManager.isInstagramBlockEnabled && reelSessionTracker.lastAllowedHash == null) {
             if (quotaManager.isFloatingCounterEnabled) {
                 floatingCounterManager.showOrUpdate(quotaManager.totalCount, quotaManager.dailyLimit)
             }
@@ -270,29 +283,11 @@ open class ContentTrackerService : AccessibilityService() {
         // Show/refresh floating overlay on vertical feed (only if enabled)
         updateFloatingOverlayState()
 
-        val videoKey = analysis.getVideoKey()
-        val currentTime = System.currentTimeMillis()
-        val isNewVideo = videoKey.isNotEmpty() && videoKey != lastInstagramVideoKey
-        val isScroll = event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED
-        val isFirstOpen = lastInstagramVideoKey.isEmpty() && videoKey.isNotEmpty()
+        val videoFingerprint = ReelFingerprintExtractor.extractReelFingerprint(rootNode)
+            ?: analysis.getVideoKey().ifEmpty { null }
 
-        if (isNewVideo || isScroll || isFirstOpen) {
-            if (currentTime - lastInstagramEventTime >= DEBOUNCE_DELAY_MS) {
-                lastInstagramEventTime = currentTime
-                if (videoKey.isNotEmpty()) {
-                    lastInstagramVideoKey = videoKey
-                }
-                val eventName = if (isNewVideo) "REEL_TRANSITION" else getEventName(event.eventType)
-                Log.i(TAG, ">> [CONFIRMED VERTICAL FEED] Instagram Reels | Event: $eventName | Key: '$videoKey'")
-
-                dispatchDetection(
-                    targetPackage = PACKAGE_INSTAGRAM,
-                    targetPlatform = "Instagram Reels",
-                    eventType = eventName
-                )
-            } else if (isNewVideo) {
-                lastInstagramVideoKey = videoKey
-            }
+        if (videoFingerprint != null) {
+            reelSessionTracker.onReelNodeDetected(videoFingerprint, "Instagram Reels")
         }
     }
 
@@ -310,6 +305,7 @@ open class ContentTrackerService : AccessibilityService() {
     fun hideFloatingOverlay() {
         stopLivenessWatchdog()
         floatingCounterManager.hide()
+        reelSessionTracker.onUserNavigatedAway()
     }
 
     private fun startLivenessWatchdog() {
@@ -387,9 +383,13 @@ open class ContentTrackerService : AccessibilityService() {
             if (quotaManager.isLimitReached) {
                 val isBlockEnabled = if (pkg == PACKAGE_YOUTUBE) quotaManager.isYouTubeBlockEnabled else quotaManager.isInstagramBlockEnabled
                 if (isBlockEnabled) {
-                    val homeNode = ytAnalysis?.homeTabNode ?: igAnalysis?.homeTabNode
-                    ejectFromVerticalFeed(pkg, homeNode, if (pkg == PACKAGE_YOUTUBE) "YouTube Shorts" else "Instagram Reels")
-                    return
+                    val isFinishingAllowed = reelSessionTracker.lastAllowedHash != null &&
+                            reelSessionTracker.activeReelHash == reelSessionTracker.lastAllowedHash
+                    if (!isFinishingAllowed) {
+                        val homeNode = ytAnalysis?.homeTabNode ?: igAnalysis?.homeTabNode
+                        ejectFromVerticalFeed(pkg, homeNode, if (pkg == PACKAGE_YOUTUBE) "YouTube Shorts" else "Instagram Reels")
+                        return
+                    }
                 }
             }
 
@@ -511,13 +511,14 @@ open class ContentTrackerService : AccessibilityService() {
         }
 
         // Factor 4: Reel container + right-edge action buttons
-        val hasReelSignals = outAnalysis.hasFullScreenReelContainer || outAnalysis.hasReelPlayerOverlay
+        val hasReelSignals = outAnalysis.hasFullScreenReelContainer || outAnalysis.hasReelPlayerOverlay || outAnalysis.has9by16VideoSurface
         val hasStackedActions = outAnalysis.stackedRightEdgeActions >= 1
 
         val isConfirmed = hasReelSignals && hasStackedActions
         Log.d(
             TAG,
             "[YouTube Heuristic] result=$isConfirmed (reelSignals=$hasReelSignals, " +
+                    "surface9x16=${outAnalysis.has9by16VideoSurface}, " +
                     "stackedActions=${outAnalysis.stackedRightEdgeActions})"
         )
 
@@ -544,6 +545,13 @@ open class ContentTrackerService : AccessibilityService() {
 
         if (bounds.width() <= 0 || bounds.height() <= 0) {
             return
+        }
+
+        val ytRules = dynamicRuleEngine.activeRules.youtubeRules
+
+        // Evaluate dynamic 9:16 portrait video surface (SurfaceView, TextureView, PlayerView)
+        if (!out.has9by16VideoSurface && dynamicRuleEngine.isVertical9by16VideoSurface(node, screen.width, screen.height)) {
+            out.has9by16VideoSurface = true
         }
 
         // Author / Channel heuristic
@@ -639,10 +647,11 @@ open class ContentTrackerService : AccessibilityService() {
             out.hasBrowseOrSearchResults = true
         }
 
-        // Full-screen Shorts reel container
+        // Full-screen Shorts reel container (including dynamic fuzzy IDs)
         val minFeedHeight = (screen.height * 0.65f).toInt()
         val minFeedWidth = (screen.width * 0.70f).toInt()
-        if ((viewId.contains("reel") || viewId.contains("shorts")) &&
+        val matchesYtFuzzy = dynamicRuleEngine.matchesFuzzyResourceId(viewId, isInstagram = false)
+        if ((viewId.contains("reel") || viewId.contains("shorts") || matchesYtFuzzy) &&
             bounds.height() >= minFeedHeight && bounds.width() >= minFeedWidth
         ) {
             out.hasFullScreenReelContainer = true
@@ -652,7 +661,7 @@ open class ContentTrackerService : AccessibilityService() {
             out.hasReelPlayerOverlay = true
         }
 
-        // Right-edge Shorts action buttons: Like, Dislike, Comments, Share, Remix
+        // Right-edge Shorts action buttons: Like, Dislike, Comments, Share, Remix, Action Rail
         val isRightEdge = bounds.left >= (screen.width * 0.70f)
         val isMiddleVertical = bounds.top > (screen.height * 0.15f) && bounds.bottom < (screen.height * 0.90f)
 
@@ -661,7 +670,8 @@ open class ContentTrackerService : AccessibilityService() {
                     viewId.contains("dislike") || contentDesc.contains("dislike") ||
                     viewId.contains("comment") || contentDesc.contains("comment") ||
                     viewId.contains("share") || contentDesc.contains("share") ||
-                    viewId.contains("remix") || contentDesc.contains("remix")
+                    viewId.contains("remix") || contentDesc.contains("remix") ||
+                    ytRules.actionRailKeywords.any { kw -> viewId.contains(kw) || contentDesc.contains(kw) }
 
             if (isAction) {
                 out.recordRightEdgeActionY(bounds.centerY())
@@ -685,6 +695,11 @@ open class ContentTrackerService : AccessibilityService() {
         val screen = getScreenDimensions()
         scanInstagramTree(root, screen, outAnalysis)
 
+        // Factor 0: Story or DM detected dynamically -> DEFINITELY NOT REELS
+        if (outAnalysis.isStoryOrDm) {
+            return false
+        }
+
         // Factor 1: Stories tray is visible on Home Feed -> DEFINITELY NOT REELS
         if (outAnalysis.hasStoriesTray) {
             return false
@@ -704,13 +719,14 @@ open class ContentTrackerService : AccessibilityService() {
 
         // Factor 4: Full-screen clips container + right-edge action buttons
         // (Used when user opened a Reel from Feed or Explore into dedicated full-screen viewer)
-        val hasClipsSignals = outAnalysis.hasFullScreenClipsContainer
+        val hasClipsSignals = outAnalysis.hasFullScreenClipsContainer || outAnalysis.has9by16VideoSurface
         val hasStackedActions = outAnalysis.stackedRightEdgeActions >= 1
 
         val isConfirmed = hasClipsSignals && hasStackedActions
         Log.d(
             TAG,
-            "[Instagram Heuristic] result=$isConfirmed (clipsContainer=$hasClipsSignals, " +
+            "[Instagram Heuristic] result=$isConfirmed (clipsContainer=${outAnalysis.hasFullScreenClipsContainer}, " +
+                    "surface9x16=${outAnalysis.has9by16VideoSurface}, " +
                     "stackedActions=$hasStackedActions, " +
                     "reelsTabSelected=${outAnalysis.isReelsTabSelected})"
         )
@@ -742,6 +758,27 @@ open class ContentTrackerService : AccessibilityService() {
 
         val minFeedHeight = (screen.height * 0.65f).toInt()
         val minFeedWidth = (screen.width * 0.70f).toInt()
+        val igRules = dynamicRuleEngine.activeRules.instagramRules
+
+        // Dynamic Story & DM check from DynamicRuleEngine
+        if (!out.isStoryOrDm) {
+            val isStory = igRules.storyViewIds.any { sId ->
+                val simpleId = sId.substringAfter(":id/").lowercase()
+                viewId.contains(simpleId) || viewId == sId.lowercase()
+            }
+            val isDm = igRules.dmViewIds.any { dmId ->
+                val simpleId = dmId.substringAfter(":id/").lowercase()
+                viewId.contains(simpleId) || viewId == dmId.lowercase()
+            }
+            if (isStory || isDm) {
+                out.isStoryOrDm = true
+            }
+        }
+
+        // Dynamic 9:16 portrait video surface evaluation (SurfaceView, TextureView, PlayerView)
+        if (!out.has9by16VideoSurface && dynamicRuleEngine.isVertical9by16VideoSurface(node, screen.width, screen.height)) {
+            out.has9by16VideoSurface = true
+        }
 
         // Extract author / caption / audio
         if (out.reelAuthor.isEmpty()) {
@@ -802,12 +839,14 @@ open class ContentTrackerService : AccessibilityService() {
             out.hasStoriesTray = true
         }
 
-        // Full-screen clips/reels container
+        // Full-screen clips/reels container (including dynamic fuzzy IDs)
+        val matchesIgFuzzy = dynamicRuleEngine.matchesFuzzyResourceId(viewId, isInstagram = true)
         val isClipsContainer = (viewId.contains("clips_video_container") ||
                 viewId.contains("clips_viewer_view_pager") ||
                 viewId.contains("clips_viewer") ||
                 viewId.contains("reel_viewer") ||
-                viewId.contains("reel_viewer_layout")) &&
+                viewId.contains("reel_viewer_layout") ||
+                matchesIgFuzzy) &&
                 !viewId.contains("feed_reels")
 
         if (isClipsContainer && bounds.height() >= minFeedHeight && bounds.width() >= minFeedWidth) {
@@ -823,7 +862,8 @@ open class ContentTrackerService : AccessibilityService() {
                     viewId.contains("comment") || contentDesc.contains("comment") ||
                     viewId.contains("share") || contentDesc.contains("share") ||
                     viewId.contains("audio") || contentDesc.contains("audio") ||
-                    viewId.contains("remix") || contentDesc.contains("remix")
+                    viewId.contains("remix") || contentDesc.contains("remix") ||
+                    igRules.actionRailKeywords.any { kw -> viewId.contains(kw) || contentDesc.contains(kw) }
 
             if (isAction) {
                 out.recordRightEdgeActionY(bounds.centerY())
@@ -849,6 +889,7 @@ open class ContentTrackerService : AccessibilityService() {
         var hasBrowseOrSearchResults: Boolean = false
         var hasFullScreenReelContainer: Boolean = false
         var hasReelPlayerOverlay: Boolean = false
+        var has9by16VideoSurface: Boolean = false
         var homeTabNode: AccessibilityNodeInfo? = null
 
         var videoAuthor: String = ""
@@ -883,6 +924,8 @@ open class ContentTrackerService : AccessibilityService() {
         var isNonReelsTabSelected: Boolean = false
         var hasStoriesTray: Boolean = false
         var hasFullScreenClipsContainer: Boolean = false
+        var has9by16VideoSurface: Boolean = false
+        var isStoryOrDm: Boolean = false
         var homeTabNode: AccessibilityNodeInfo? = null
 
         var reelAuthor: String = ""
@@ -922,42 +965,6 @@ open class ContentTrackerService : AccessibilityService() {
             }
         } else {
             ScreenSize(resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels)
-        }
-    }
-
-    private fun dispatchDetection(
-        targetPackage: String,
-        targetPlatform: String,
-        eventType: String
-    ) {
-        serviceScope.launch {
-            val shouldBlock = when (targetPackage) {
-                PACKAGE_YOUTUBE -> quotaManager.isYouTubeBlockEnabled
-                PACKAGE_INSTAGRAM, PACKAGE_INSTAGRAM_LITE -> quotaManager.isInstagramBlockEnabled
-                else -> false
-            }
-
-            // Increment short-form count in QuotaManager
-            val todayTotal = if (targetPackage == PACKAGE_YOUTUBE) {
-                quotaManager.incrementShorts()
-            } else {
-                quotaManager.incrementReels()
-            }
-
-            val dailyLimit = quotaManager.dailyLimit
-            val isLimitReached = todayTotal >= dailyLimit
-            Log.i(TAG, "Incremented count: $todayTotal / $dailyLimit for $targetPlatform")
-
-            // Update floating counter overlay with "3/50" format
-            if (quotaManager.isFloatingCounterEnabled) {
-                floatingCounterManager.showOrUpdate(todayTotal, dailyLimit)
-                startLivenessWatchdog()
-            }
-
-            // BLOCKING ENFORCEMENT: After hitting 50 reels (or dailyLimit), auto-block!
-            if (isLimitReached && shouldBlock) {
-                ejectFromVerticalFeed(targetPackage, null, targetPlatform)
-            }
         }
     }
 
