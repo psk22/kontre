@@ -471,7 +471,7 @@ open class WatcherForegroundService : Service() {
 
         val notification = NotificationCompat.Builder(this, CHANNEL_BATTERY_ID)
             .setContentTitle("⚠️ Background Keep-Alive Warning")
-            .setContentText("Exempt ReelShield from battery optimization to prevent OEM kills.")
+            .setContentText("Exempt Kontre from battery optimization to prevent OEM kills.")
             .setStyle(
                 NotificationCompat.BigTextStyle().bigText(
                     "Aggressive OEM task killers (One UI, HyperOS, ColorOS) may terminate background monitoring. " +
