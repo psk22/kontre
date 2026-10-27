@@ -108,14 +108,8 @@ class ReelSessionTracker(
 
             // Case 2: Daily quota already reached
             if (quotaManager.isLimitReached && isBlockEnabled) {
-                // Allow finishing the video that triggered the warning
-                if (lastAllowedHash != null && reelHash == lastAllowedHash) {
-                    activeReelHash = reelHash
-                    return
-                }
-
-                // Swiped to next video or re-opened: Eject immediately!
                 Log.w(TAG, "Daily quota reached (${quotaManager.totalCount}/${quotaManager.dailyLimit}). Ejecting!")
+                lastAllowedHash = null
                 onEjectionRequired(platform)
                 return
             }
@@ -160,12 +154,9 @@ class ReelSessionTracker(
      */
     fun onUserNavigatedAway() {
         synchronized(lock) {
-            if (activeReelHash != null || dwellJob != null) {
-                Log.d(TAG, "User navigated away from reel. Cancelling dwell job.")
-                cancelDwellTimerLocked()
-                activeReelHash = null
-                lastAllowedHash = null
-            }
+            cancelDwellTimerLocked()
+            activeReelHash = null
+            lastAllowedHash = null
         }
     }
 
@@ -195,20 +186,14 @@ class ReelSessionTracker(
                 // Case A: Total Block Mode - Immediate Ejection
                 quotaManager.isTotalBlockEnabled -> {
                     Log.w(TAG, "Total Block Mode active. Ejecting!")
+                    lastAllowedHash = null
                     onEjectionRequired(platform)
                 }
 
-                // Case B: Exactly hit daily limit on this video (e.g. 50/50)!
-                // Deliver warning! Allow finishing this 50th video.
-                limit in 1..newCount && newCount == limit -> {
-                    Log.w(TAG, "Daily quota of $limit reached on video $reelHash. Giving warning. Next video will be blocked!")
-                    lastAllowedHash = reelHash
-                    onLimitReachedWarning(platform)
-                }
-
-                // Case C: Exceeded limit (51+)
-                limit in 1..<newCount -> {
-                    Log.w(TAG, "Daily quota exceeded ($newCount > $limit). Ejecting!")
+                // Case B: Daily quota reached or exceeded
+                limit in 1..newCount -> {
+                    Log.w(TAG, "Daily quota of $limit reached ($newCount >= $limit). Ejecting!")
+                    lastAllowedHash = null
                     onEjectionRequired(platform)
                 }
             }

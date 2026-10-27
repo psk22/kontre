@@ -312,31 +312,10 @@ open class WatcherForegroundService : Service() {
     }
 
     private fun triggerFallbackBlockIntervention(fgPkg: String) {
-        val notificationManager = getSystemService(NotificationManager::class.java)
-
         val fullScreenIntent = Intent(this, BlockActivity::class.java).apply {
             putExtra(BlockActivity.EXTRA_BLOCKED_PACKAGE, fgPkg)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
-
-        val fullScreenPendingIntent = PendingIntent.getActivity(
-            this,
-            201,
-            fullScreenIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        val notification = NotificationCompat.Builder(this, CHANNEL_ALERT_ID)
-            .setContentTitle("⚠️ Focus Shield Active")
-            .setContentText("Short-form limits reached. Focus shield engaged.")
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setFullScreenIntent(fullScreenPendingIntent, true)
-            .setAutoCancel(true)
-            .build()
-
-        notificationManager?.notify(ALERT_NOTIFICATION_ID, notification)
 
         try {
             startActivity(fullScreenIntent)

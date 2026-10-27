@@ -39,21 +39,19 @@ open class ContentTrackerService : AccessibilityService() {
             quotaManager = quotaManager,
             onCountUpdated = { newCount, platform ->
                 Log.i(TAG, "ReelSessionTracker count updated: $newCount on $platform")
-                if (quotaManager.isFloatingCounterEnabled) {
-                    mainHandler.post {
+                mainHandler.post {
+                    if (quotaManager.isFloatingCounterEnabled && !quotaManager.isLimitReached && (quotaManager.dailyLimit == 0 || newCount < quotaManager.dailyLimit)) {
                         floatingCounterManager.showOrUpdate(newCount, quotaManager.dailyLimit)
                         startLivenessWatchdog()
+                    } else {
+                        floatingCounterManager.hide()
                     }
                 }
             },
             onLimitReachedWarning = { platform ->
                 Log.w(TAG, "ReelSessionTracker limit reached warning on $platform")
                 mainHandler.post {
-                    Toast.makeText(
-                        applicationContext,
-                        "⚠️ Daily limit of ${quotaManager.dailyLimit} reached on this video! Next will be blocked.",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    floatingCounterManager.hide()
                 }
             },
             onEjectionRequired = { platform ->
@@ -67,8 +65,9 @@ open class ContentTrackerService : AccessibilityService() {
         )
     }
 
-    // Ejection rate-limiter to prevent multiple back presses from kicking the user out of the app
-    private var lastEjectionTime = 0L
+    // Rate-limiters for redirects and back presses
+    private var lastBackEjectionTime = 0L
+    private var lastHomeRedirectTime = 0L
 
     // Anti-flutter debouncer for navigating away (prevents scroll transitions from prematurely cancelling dwell)
     private var pendingNavAwayRunnable: Runnable? = null
@@ -95,6 +94,7 @@ open class ContentTrackerService : AccessibilityService() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == Intent.ACTION_SCREEN_OFF) {
                 hideFloatingOverlay()
+                reelSessionTracker.clearSession()
             }
         }
     }
@@ -237,16 +237,8 @@ open class ContentTrackerService : AccessibilityService() {
 
         // 3. If event is from outside YouTube and Instagram:
         if (packageName != PACKAGE_YOUTUBE && packageName != PACKAGE_INSTAGRAM && packageName != PACKAGE_INSTAGRAM_LITE) {
-            val activePkg = rootInActiveWindow?.packageName?.toString()
-            if (activePkg != null &&
-                activePkg != PACKAGE_YOUTUBE &&
-                activePkg != PACKAGE_INSTAGRAM &&
-                activePkg != PACKAGE_INSTAGRAM_LITE &&
-                activePkg != "com.android.systemui" &&
-                activePkg != applicationContext.packageName
-            ) {
-                hideFloatingOverlay()
-            }
+            hideFloatingOverlay()
+            reelSessionTracker.clearSession()
             return
         }
 
@@ -271,16 +263,15 @@ open class ContentTrackerService : AccessibilityService() {
 
         cancelPendingNavAway()
 
-        // Check if daily limit already reached: auto-block immediate entrance (unless finishing allowed video)
-        if (quotaManager.isLimitReached && quotaManager.isYouTubeBlockEnabled && reelSessionTracker.lastAllowedHash == null) {
-            if (quotaManager.isFloatingCounterEnabled) {
-                floatingCounterManager.showOrUpdate(quotaManager.totalCount, quotaManager.dailyLimit)
-            }
-            ejectFromVerticalFeed(PACKAGE_YOUTUBE, analysis.homeTabNode, "YouTube Shorts")
+        // Check if daily limit already reached: auto-block immediate entrance
+        if (quotaManager.isLimitReached && quotaManager.isYouTubeBlockEnabled) {
+            hideFloatingOverlay()
+            val homeNode = if (analysis.isShortsTabSelected && !isNodeSelected(analysis.homeTabNode)) analysis.homeTabNode else null
+            ejectFromVerticalFeed(PACKAGE_YOUTUBE, homeNode, "YouTube Shorts")
             return
         }
 
-        // Show/refresh floating overlay on vertical feed (only if enabled)
+        // Show/refresh floating overlay on vertical feed (only if enabled and under limit)
         updateFloatingOverlayState()
 
         val videoFingerprint = analysis.getVideoKey().ifEmpty {
@@ -306,16 +297,15 @@ open class ContentTrackerService : AccessibilityService() {
 
         cancelPendingNavAway()
 
-        // Check if daily limit already reached: auto-block immediate entrance (unless finishing allowed video)
-        if (quotaManager.isLimitReached && quotaManager.isInstagramBlockEnabled && reelSessionTracker.lastAllowedHash == null) {
-            if (quotaManager.isFloatingCounterEnabled) {
-                floatingCounterManager.showOrUpdate(quotaManager.totalCount, quotaManager.dailyLimit)
-            }
-            ejectFromVerticalFeed(PACKAGE_INSTAGRAM, analysis.homeTabNode, "Instagram Reels")
+        // Check if daily limit already reached: auto-block immediate entrance
+        if (quotaManager.isLimitReached && quotaManager.isInstagramBlockEnabled) {
+            hideFloatingOverlay()
+            val homeNode = if (analysis.isReelsTabSelected && !isNodeSelected(analysis.homeTabNode)) analysis.homeTabNode else null
+            ejectFromVerticalFeed(PACKAGE_INSTAGRAM, homeNode, "Instagram Reels")
             return
         }
 
-        // Show/refresh floating overlay on vertical feed (only if enabled)
+        // Show/refresh floating overlay on vertical feed (only if enabled and under limit)
         updateFloatingOverlayState()
 
         val videoFingerprint = analysis.getVideoKey().ifEmpty {
@@ -328,7 +318,7 @@ open class ContentTrackerService : AccessibilityService() {
     }
 
     private fun updateFloatingOverlayState() {
-        if (quotaManager.isFloatingCounterEnabled) {
+        if (quotaManager.isFloatingCounterEnabled && !quotaManager.isLimitReached) {
             val currentCount = quotaManager.totalCount
             val limit = quotaManager.dailyLimit
             floatingCounterManager.showOrUpdate(currentCount, limit)
@@ -366,13 +356,6 @@ open class ContentTrackerService : AccessibilityService() {
      */
     private val livenessWatchdog = object : Runnable {
         override fun run() {
-            if (!quotaManager.isFloatingCounterEnabled) {
-                hideFloatingOverlay()
-                return
-            }
-
-            if (!floatingCounterManager.isShowing) return
-
             // If user is actively dragging, keep watchdog running without dismissing
             if (floatingCounterManager.isDragging) {
                 mainHandler.postDelayed(this, WATCHDOG_INTERVAL_MS)
@@ -387,6 +370,7 @@ open class ContentTrackerService : AccessibilityService() {
 
                 if (!isTargetAppActive) {
                     hideFloatingOverlay()
+                    reelSessionTracker.clearSession()
                     return
                 }
                 mainHandler.postDelayed(this, WATCHDOG_INTERVAL_MS)
@@ -398,6 +382,7 @@ open class ContentTrackerService : AccessibilityService() {
 
             if (!isStillInTargetApp) {
                 hideFloatingOverlay()
+                reelSessionTracker.clearSession()
                 return
             }
 
@@ -422,14 +407,18 @@ open class ContentTrackerService : AccessibilityService() {
             if (quotaManager.isLimitReached) {
                 val isBlockEnabled = if (pkg == PACKAGE_YOUTUBE) quotaManager.isYouTubeBlockEnabled else quotaManager.isInstagramBlockEnabled
                 if (isBlockEnabled) {
-                    val isFinishingAllowed = reelSessionTracker.lastAllowedHash != null &&
-                            reelSessionTracker.activeReelHash == reelSessionTracker.lastAllowedHash
-                    if (!isFinishingAllowed) {
-                        val homeNode = ytAnalysis?.homeTabNode ?: igAnalysis?.homeTabNode
-                        ejectFromVerticalFeed(pkg, homeNode, if (pkg == PACKAGE_YOUTUBE) "YouTube Shorts" else "Instagram Reels")
-                        return
-                    }
+                    hideFloatingOverlay()
+                    val isDedicatedTabSelected = ytAnalysis?.isShortsTabSelected == true || igAnalysis?.isReelsTabSelected == true
+                    val targetHomeNode = if (pkg == PACKAGE_YOUTUBE) ytAnalysis?.homeTabNode else igAnalysis?.homeTabNode
+                    val homeNode = if (isDedicatedTabSelected && !isNodeSelected(targetHomeNode)) targetHomeNode else null
+                    ejectFromVerticalFeed(pkg, homeNode, if (pkg == PACKAGE_YOUTUBE) "YouTube Shorts" else "Instagram Reels")
+                    return
                 }
+            }
+
+            // Ensure floating counter is hidden if limit is reached or disabled
+            if (quotaManager.isLimitReached || !quotaManager.isFloatingCounterEnabled) {
+                floatingCounterManager.hide()
             }
 
             mainHandler.postDelayed(this, WATCHDOG_INTERVAL_MS)
@@ -441,37 +430,52 @@ open class ContentTrackerService : AccessibilityService() {
         homeNode: AccessibilityNodeInfo?,
         platformName: String
     ) {
-        val now = System.currentTimeMillis()
-        if (now - lastEjectionTime < EJECTION_COOLDOWN_MS) {
-            return
-        }
-        lastEjectionTime = now
+        hideFloatingOverlay()
 
         mainHandler.post {
-            var redirected = false
+            val now = System.currentTimeMillis()
 
-            val nodeToClick = homeNode ?: findHomeTabInRoot(rootInActiveWindow, targetPackage)
-            if (nodeToClick != null) {
-                redirected = performClickOnNodeOrParent(nodeToClick)
+            // 1. Safety guard: If recently redirected to Home, suppress further actions!
+            // Prevents double-clicking Home tab or triggering BACK immediately after landing on Home,
+            // which causes Instagram to refresh the feed / scroll to top.
+            if (now - lastHomeRedirectTime < 2500L) {
+                Log.d(TAG, "Ejection suppressed: Recently redirected to Home (${now - lastHomeRedirectTime}ms ago)")
+                return@post
             }
 
-            if (redirected) {
-                Log.i(TAG, "Limit reached ($platformName): Smoothly redirected to Home feed.")
-                Toast.makeText(
-                    applicationContext,
-                    "🛑 Daily limit of ${quotaManager.dailyLimit} completed! Redirected to Home.",
-                    Toast.LENGTH_SHORT
-                ).show()
-            } else {
-                Log.i(TAG, "Limit reached ($platformName): Performing single BACK to exit vertical feed.")
+            // 2. If Home tab is ALREADY selected, DO NOT click or press BACK!
+            // Pressing BACK or clicking Home when already on the Home tab refreshes the feed.
+            if (homeNode != null && isNodeSelected(homeNode)) {
+                Log.d(TAG, "Already on Home tab. Suppressing ejection to prevent feed refresh.")
+                return@post
+            }
+
+            // 3. If on dedicated short-form tab (Reels/Shorts tab) and Home tab is NOT selected:
+            // Smoothly click Home tab once.
+            if (homeNode != null && homeNode.isVisibleToUser && !isNodeSelected(homeNode)) {
+                lastHomeRedirectTime = now
+                val clicked = performClickOnNodeOrParent(homeNode)
+                if (clicked) {
+                    Log.i(TAG, "Limit reached ($platformName): Smoothly switched to Home tab.")
+                    return@post
+                }
+            }
+
+            // 4. Fullscreen short-form player (opened from feed, search, DM):
+            // Perform single BACK to dismiss the player cleanly and return to feed without refreshing.
+            if (now - lastBackEjectionTime > 1500L) {
+                lastBackEjectionTime = now
+                Log.i(TAG, "Limit reached ($platformName): Performing single BACK to exit vertical feed without refreshing.")
                 performGlobalAction(GLOBAL_ACTION_BACK)
-                Toast.makeText(
-                    applicationContext,
-                    "🛑 Daily limit of ${quotaManager.dailyLimit} completed! $platformName exited.",
-                    Toast.LENGTH_SHORT
-                ).show()
             }
         }
+    }
+
+    private fun isNodeSelected(node: AccessibilityNodeInfo?): Boolean {
+        if (node == null) return false
+        val desc = node.contentDescription?.toString()?.lowercase() ?: ""
+        val text = node.text?.toString()?.lowercase() ?: ""
+        return node.isSelected || node.isChecked || desc.contains("selected") || text.contains("selected")
     }
 
     private fun findHomeTabInRoot(root: AccessibilityNodeInfo?, targetPackage: String): AccessibilityNodeInfo? {
@@ -539,8 +543,9 @@ open class ContentTrackerService : AccessibilityService() {
             return true
         }
 
-        // Factor 2: If Home/Subscriptions/Library is selected, not Shorts
-        if (outAnalysis.isNonShortsTabSelected && outAnalysis.bottomNavFound) {
+        // Factor 2: If bottom nav bar is found and Shorts tab is NOT selected (Home, Subscriptions, Library, You)
+        if (outAnalysis.bottomNavFound && !outAnalysis.isShortsTabSelected) {
+            Log.d(TAG, "[YouTube Heuristic] Bottom navigation present and Shorts tab not selected -> Result = false")
             return false
         }
 
@@ -549,9 +554,9 @@ open class ContentTrackerService : AccessibilityService() {
             return false
         }
 
-        // Factor 4: Reel container + right-edge action buttons
+        // Factor 4: Reel container + right-edge action buttons (at least 2 stacked actions)
         val hasReelSignals = outAnalysis.hasFullScreenReelContainer || outAnalysis.hasReelPlayerOverlay || outAnalysis.has9by16VideoSurface
-        val hasStackedActions = outAnalysis.stackedRightEdgeActions >= 1
+        val hasStackedActions = outAnalysis.stackedRightEdgeActions >= 2
 
         val isConfirmed = hasReelSignals && hasStackedActions
         Log.d(
@@ -721,8 +726,9 @@ open class ContentTrackerService : AccessibilityService() {
             return false
         }
 
-        // Factor 1: Stories tray is visible on Home Feed -> DEFINITELY NOT REELS
-        if (outAnalysis.hasStoriesTray) {
+        // Factor 1: Stories tray or Home Feed detected -> DEFINITELY NOT REELS
+        if (outAnalysis.hasStoriesTray || outAnalysis.isHomeFeed) {
+            Log.d(TAG, "[Instagram Heuristic] Stories tray or Home feed detected. Result = false")
             return false
         }
 
@@ -732,23 +738,27 @@ open class ContentTrackerService : AccessibilityService() {
             return true
         }
 
-        // Factor 3: Non-reels tab selected in bottom bar (Home, Search, Profile)
-        // If bottom bar is present and a non-reels tab is selected, any background clips container is pre-warmed cache!
-        if (outAnalysis.isNonReelsTabSelected && outAnalysis.bottomNavFound) {
+        // Factor 3: Bottom navigation is present and Reels tab is NOT selected
+        // In full-screen Reels (opened from feed or explore), the bottom navigation bar is not displayed.
+        // Therefore, if the bottom bar is present and Reels is not selected, the user is on Home/Explore/Profile.
+        if (outAnalysis.bottomNavFound && !outAnalysis.isReelsTabSelected) {
+            Log.d(TAG, "[Instagram Heuristic] Bottom navigation present and Reels tab not selected -> Result = false")
             return false
         }
 
-        // Factor 4: Full-screen clips container + right-edge action buttons
-        // (Used when user opened a Reel from Feed or Explore into dedicated full-screen viewer)
+        // Factor 4: Dedicated Full-screen clips container + vertical right-edge action rail (at least 2 stacked actions)
+        val minActions = dynamicRuleEngine.activeRules.instagramRules.minActionButtons.coerceAtLeast(2)
         val hasClipsSignals = outAnalysis.hasFullScreenClipsContainer || outAnalysis.has9by16VideoSurface
-        val hasStackedActions = outAnalysis.stackedRightEdgeActions >= 1
+        val hasStackedActions = outAnalysis.stackedRightEdgeActions >= minActions
 
         val isConfirmed = hasClipsSignals && hasStackedActions
         Log.d(
             TAG,
             "[Instagram Heuristic] result=$isConfirmed (clipsContainer=${outAnalysis.hasFullScreenClipsContainer}, " +
                     "surface9x16=${outAnalysis.has9by16VideoSurface}, " +
-                    "stackedActions=$hasStackedActions, " +
+                    "stackedActions=${outAnalysis.stackedRightEdgeActions}, " +
+                    "minActions=$minActions, " +
+                    "bottomNavFound=${outAnalysis.bottomNavFound}, " +
                     "reelsTabSelected=${outAnalysis.isReelsTabSelected})"
         )
 
@@ -847,6 +857,28 @@ open class ContentTrackerService : AccessibilityService() {
             }
         }
 
+        // Detect Home Feed signals:
+        // 1. Stories tray at top of home feed (feed_reels)
+        if (viewId.contains("feed_reels") || viewId.contains("stories_tray") || viewId.contains("stories_recycler")) {
+            out.hasStoriesTray = true
+            out.isHomeFeed = true
+        }
+
+        // 2. Main feed recyclerView / container
+        if (viewId.contains("feed_recycler") || viewId.contains("main_feed") || viewId.contains("sticky_header_list") ||
+            viewId.contains("layout_container_main") || viewId.contains("feed_composer")) {
+            out.isHomeFeed = true
+        }
+
+        // 3. Instagram top action bar
+        if (bounds.top < (screen.height * 0.15f)) {
+            if (viewId.contains("action_bar_title") || viewId.contains("action_bar_inbox") ||
+                viewId.contains("action_bar_notification") || viewId.contains("action_bar_share") ||
+                rawText.equals("Instagram", ignoreCase = true) || rawDesc.equals("Instagram", ignoreCase = true)) {
+                out.isHomeFeed = true
+            }
+        }
+
         // Check Bottom Navigation Bar
         val isBottomBarRegion = bounds.top >= (screen.height * 0.80f)
         if (isBottomBarRegion) {
@@ -863,7 +895,7 @@ open class ContentTrackerService : AccessibilityService() {
                     contentDesc.contains("create") || contentDesc.contains("direct") ||
                     contentDesc.contains("message") || contentDesc.contains("messages"))
 
-            val isSelectedOrActive = node.isSelected || node.isChecked || contentDesc.contains("selected")
+            val isSelectedOrActive = isNodeSelected(node)
 
             if (isReelsTab) {
                 out.bottomNavFound = true
@@ -871,16 +903,14 @@ open class ContentTrackerService : AccessibilityService() {
             } else if (isHome) {
                 out.bottomNavFound = true
                 out.homeTabNode = node
-                if (isSelectedOrActive) out.isNonReelsTabSelected = true
+                if (isSelectedOrActive) {
+                    out.isNonReelsTabSelected = true
+                    out.isHomeFeed = true
+                }
             } else if (isOtherTab) {
                 out.bottomNavFound = true
                 if (isSelectedOrActive) out.isNonReelsTabSelected = true
             }
-        }
-
-        // Detect Stories tray at top of home feed (feed_reels)
-        if (viewId.contains("feed_reels") || viewId.contains("stories_tray")) {
-            out.hasStoriesTray = true
         }
 
         // Full-screen clips/reels container (including dynamic fuzzy IDs)
@@ -980,6 +1010,7 @@ open class ContentTrackerService : AccessibilityService() {
         var isReelsTabSelected: Boolean = false
         var isNonReelsTabSelected: Boolean = false
         var hasStoriesTray: Boolean = false
+        var isHomeFeed: Boolean = false
         var hasFullScreenClipsContainer: Boolean = false
         var has9by16VideoSurface: Boolean = false
         var isStoryOrDm: Boolean = false
