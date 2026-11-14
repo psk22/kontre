@@ -257,7 +257,7 @@ fun StreakEvolutionScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(225.dp)
+                    .height(255.dp)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
@@ -271,7 +271,7 @@ fun StreakEvolutionScreen(
                 // Wide ambient feathered radial emerald glow
                 Canvas(
                     modifier = Modifier
-                        .size(280.dp)
+                        .size(320.dp)
                         .scale(auraScale)
                         .alpha(auraAlpha)
                 ) {
@@ -293,7 +293,7 @@ fun StreakEvolutionScreen(
                 // Inner core back-light moving with the creature
                 Canvas(
                     modifier = Modifier
-                        .size(190.dp)
+                        .size(230.dp)
                         .offset(y = floatY.dp)
                         .scale(auraScale * 0.98f)
                         .alpha(auraAlpha * 0.85f)
@@ -324,7 +324,7 @@ fun StreakEvolutionScreen(
                         painter = painterResource(id = stage.drawableRes),
                         contentDescription = stage.title,
                         modifier = Modifier
-                            .size(185.dp)
+                            .size(225.dp)
                             .offset(y = floatY.dp)
                     )
                 }
