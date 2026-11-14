@@ -181,8 +181,6 @@ fun StreakEvolutionScreen(
         mutableStateOf(actualCurrentStage)
     }
 
-    var isTooltipVisible by remember { mutableStateOf(true) }
-
     // Floating dragon mascot animation & dynamic halo aura transitions
     val infiniteTransition = rememberInfiniteTransition(label = "DragonAnimations")
     val floatY by infiniteTransition.animateFloat(
@@ -267,7 +265,6 @@ fun StreakEvolutionScreen(
                         // Tap cycles to next dragon evolution stage
                         val nextOrdinal = (selectedStage.ordinal + 1) % DragonStage.values().size
                         selectedStage = DragonStage.values()[nextOrdinal]
-                        isTooltipVisible = true
                     },
                 contentAlignment = Alignment.Center
             ) {
@@ -331,81 +328,6 @@ fun StreakEvolutionScreen(
                             .offset(y = floatY.dp)
                     )
                 }
-
-                // Floating Sleek Speech Bubble / Tooltip (Top Right)
-                if (isTooltipVisible) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .offset(x = 4.dp, y = 2.dp)
-                    ) {
-                        Column(horizontalAlignment = Alignment.Start) {
-                            Row(
-                                modifier = Modifier
-                                    .border(1.dp, StitchEmerald.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-                                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(7.dp)
-                            ) {
-                                // Badge number chip
-                                val displayDays = if (selectedStage == actualCurrentStage) currentStreak else selectedStage.stageDays
-                                Box(
-                                    modifier = Modifier
-                                        .size(24.dp)
-                                        .clip(RoundedCornerShape(7.dp))
-                                        .background(StitchEmerald.copy(alpha = 0.15f))
-                                        .border(1.dp, StitchEmerald.copy(alpha = 0.35f), RoundedCornerShape(7.dp)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "$displayDays",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = StitchEmerald
-                                    )
-                                }
-
-                                Column {
-                                    Row(
-                                        verticalAlignment = Alignment.Bottom,
-                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
-                                    ) {
-                                        Text(
-                                            text = "$displayDays",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = Color.White
-                                        )
-                                        Text(
-                                            text = "Days",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White
-                                        )
-                                    }
-                                    Text(
-                                        text = selectedStage.stageLabel,
-                                        fontSize = 8.5.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        letterSpacing = 1.sp,
-                                        color = StitchEmerald
-                                    )
-                                }
-                            }
-
-                            // Speech pointer tail pointing down towards creature
-                            Box(
-                                modifier = Modifier
-                                    .padding(start = 14.dp)
-                                    .offset(y = (-3).dp)
-                                    .size(6.dp)
-                                    .rotate(45f)
-                                    .background(Color(0xFF18181E))
-                                    .border(1.dp, StitchEmerald.copy(alpha = 0.5f))
-                            )
-                        }
-                    }
-                }
             }
 
             // Title
@@ -425,7 +347,6 @@ fun StreakEvolutionScreen(
                     .clickable {
                         val nextOrdinal = (selectedStage.ordinal + 1) % DragonStage.values().size
                         selectedStage = DragonStage.values()[nextOrdinal]
-                        isTooltipVisible = true
                     }
                     .padding(horizontal = 14.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -479,7 +400,6 @@ fun StreakEvolutionScreen(
                             .clip(RoundedCornerShape(6.dp))
                             .clickable {
                                 selectedStage = stage
-                                isTooltipVisible = true
                             }
                             .padding(horizontal = 3.dp, vertical = 3.dp),
                         verticalAlignment = Alignment.CenterVertically,
