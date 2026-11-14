@@ -85,6 +85,10 @@ import com.kontre.app.ui.SetDailyLimitScreen
 import com.kontre.app.ui.StreakEvolutionScreen
 import com.kontre.app.ui.StitchBottomNav
 import com.kontre.app.ui.StitchTab
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import com.kontre.app.ui.theme.StitchDarkBg
 import com.kontre.app.ui.theme.FogText
 import com.kontre.app.ui.theme.IrisAccent
@@ -193,7 +197,15 @@ fun MainScreenContainer(
     initialTab: StitchTab = StitchTab.TOGGLES
 ) {
     val context = LocalContext.current
-    var selectedTab by remember { mutableStateOf(initialTab) }
+    val coroutineScope = rememberCoroutineScope()
+    val tabs = remember { StitchTab.values() }
+    val initialPageIndex = remember { tabs.indexOf(initialTab).coerceAtLeast(0) }
+    val pagerState = rememberPagerState(
+        initialPage = initialPageIndex,
+        pageCount = { tabs.size }
+    )
+    val selectedTab = tabs[pagerState.currentPage]
+
     var isAccessibilityEnabled by remember {
         mutableStateOf(isAccessibilityServiceActive(context))
     }
@@ -229,9 +241,14 @@ fun MainScreenContainer(
                 onMenuClick = { showDrawer = true }
             )
 
-            // Middle view area for the 3 tabs
-            Box(modifier = Modifier.weight(1f)) {
-                when (selectedTab) {
+            // Middle view area: Horizontal Pager connecting all 3 tabs with smooth left/right swipe gestures
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) { page ->
+                when (tabs[page]) {
                     StitchTab.TOGGLES -> {
                         PlatformTogglesScreen(
                             quotaManager = quotaManager,
@@ -249,7 +266,14 @@ fun MainScreenContainer(
 
             StitchBottomNav(
                 selectedTab = selectedTab,
-                onTabSelected = { selectedTab = it }
+                onTabSelected = { tab ->
+                    val targetIndex = tabs.indexOf(tab)
+                    if (targetIndex >= 0) {
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(targetIndex)
+                        }
+                    }
+                }
             )
         }
 
