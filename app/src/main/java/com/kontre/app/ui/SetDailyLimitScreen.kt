@@ -119,7 +119,6 @@ fun SetDailyLimitScreen(
         label = "RadialProgress"
     )
 
-    val reelsRemaining = (dailyLimit - totalCount).coerceAtLeast(0)
     val isLimitHit = quotaManager.isLimitReached
 
     val tooltipTextPaint = remember(density) {
@@ -189,7 +188,12 @@ fun SetDailyLimitScreen(
                     if (animatedProgress > 0f) {
                         drawArc(
                             brush = Brush.sweepGradient(
-                                colors = listOf(
+                                colors = if (isLimitHit) listOf(
+                                    Color(0xFFE53935),
+                                    Color(0xFFFF5252),
+                                    Color(0xFFFF7A6B),
+                                    Color(0xFFFF5252)
+                                ) else listOf(
                                     StitchEmeraldDark,
                                     StitchEmerald,
                                     StitchEmeraldGlow,
@@ -204,62 +208,25 @@ fun SetDailyLimitScreen(
                     }
                 }
 
-                // Center Text Display
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
+                // Center Text Display (Clean Count Only)
+                Row(
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.Center
                 ) {
                     Text(
-                        text = "TODAY'S CONSUMPTION",
-                        fontSize = 8.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.5.sp,
-                        color = StitchTextMuted
+                        text = "$totalCount",
+                        fontSize = 44.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color.White,
+                        letterSpacing = (-1.5).sp
                     )
-
-                    Spacer(modifier = Modifier.height(2.dp))
-
-                    Row(
-                        verticalAlignment = Alignment.Bottom,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = "$totalCount",
-                            fontSize = 36.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color.White,
-                            letterSpacing = (-1).sp
-                        )
-                        Text(
-                            text = " / $dailyLimit",
-                            fontSize = 19.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White.copy(alpha = 0.5f),
-                            modifier = Modifier.padding(bottom = 3.dp, start = 2.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(3.dp))
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(5.5.dp)
-                                .background(
-                                    if (isLimitHit) Color(0xFFFF4A36) else StitchEmerald,
-                                    CircleShape
-                                )
-                        )
-                        Text(
-                            text = if (isLimitHit) "Limit Hit • Shield Active" else "$reelsRemaining reels left",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (isLimitHit) Color(0xFFFF6B5B) else StitchEmerald
-                        )
-                    }
+                    Text(
+                        text = " / $dailyLimit",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.5f),
+                        modifier = Modifier.padding(bottom = 5.dp, start = 3.dp)
+                    )
                 }
             }
 
