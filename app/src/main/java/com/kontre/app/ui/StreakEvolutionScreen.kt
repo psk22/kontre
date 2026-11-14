@@ -530,36 +530,20 @@ fun StreakEvolutionScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 // Starting date
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = "STARTING DATE OF STREAK",
-                            fontSize = 9.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.2.sp,
-                            color = StitchTextMuted
-                        )
-                        Text(
-                            text = streakStartDate,
-                            fontSize = 13.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.White
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .size(30.dp)
-                            .clip(CircleShape)
-                            .border(1.dp, Color(0x22FFFFFF), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(text = "🗓", fontSize = 13.sp)
-                    }
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = "STARTING DATE OF STREAK",
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.2.sp,
+                        color = StitchTextMuted
+                    )
+                    Text(
+                        text = streakStartDate,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White
+                    )
                 }
 
                 Box(
