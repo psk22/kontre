@@ -340,15 +340,17 @@ fun StreakEvolutionScreen(
                 textAlign = TextAlign.Center
             )
 
-            // 4. Interactive Stage Badge Indicator (Pill Button - Single Line)
+            // 4. Interactive Stage Indicator (Unboxed Clean Single Line)
             Row(
                 modifier = Modifier
-                    .border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(20.dp))
-                    .clickable {
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) {
                         val nextOrdinal = (selectedStage.ordinal + 1) % DragonStage.values().size
                         selectedStage = DragonStage.values()[nextOrdinal]
                     }
-                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                    .padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
             ) {
