@@ -63,7 +63,7 @@ fun KontreTopHeader(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.Start,
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Logo + Brand Wordmark (Clean unboxed vector logo)
@@ -85,6 +85,46 @@ fun KontreTopHeader(
                     letterSpacing = 3.sp,
                     color = StitchEmerald
                 )
+            }
+
+            // Clean Hamburger Menu Icon (Direct 3 lines, unboxed without bento grid border/background)
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) {
+                        onMenuClick()
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(4.5.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(20.dp)
+                            .height(2.dp)
+                            .clip(CircleShape)
+                            .background(Color.White)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .width(20.dp)
+                            .height(2.dp)
+                            .clip(CircleShape)
+                            .background(Color.White)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .width(20.dp)
+                            .height(2.dp)
+                            .clip(CircleShape)
+                            .background(Color.White)
+                    )
+                }
             }
         }
 

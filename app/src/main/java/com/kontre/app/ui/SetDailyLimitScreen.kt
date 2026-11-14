@@ -344,6 +344,16 @@ fun SetDailyLimitScreen(
                 }
             }
 
+            // Resets in countdown (clean, without "MIDNIGHT AUTO-RESET" or "AUTO 00:00" box)
+            Text(
+                text = "Resets in: $countdownText",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = StitchTextMuted,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(vertical = 4.dp)
+            )
+
             Spacer(modifier = Modifier.height(16.dp))
         }
     }
