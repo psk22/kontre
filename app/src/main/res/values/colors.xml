@@ -17,6 +17,8 @@
     <color name="accent_red">#FF4A36</color>
     <color name="card_dark">#26253B</color>
     <color name="translucent_dark">#F2181824</color>
-    <color name="text_gray">#8E8DA0</color>
-    <color name="border_gray">#32314A</color>
+    <!-- Stitch Palette -->
+    <color name="stitch_dark_bg">#121215</color>
+    <color name="stitch_emerald">#07D98C</color>
+    <color name="stitch_emerald_glow">#00FF9D</color>
 </resources>

@@ -1,7 +1,7 @@
 <resources>
     <style name="Theme.Kontre" parent="android:Theme.Material.NoActionBar">
-        <item name="android:statusBarColor">@color/aubergine_canvas</item>
-        <item name="android:navigationBarColor">@color/aubergine_canvas</item>
-        <item name="android:windowBackground">@color/aubergine_canvas</item>
+        <item name="android:statusBarColor">@color/stitch_dark_bg</item>
+        <item name="android:navigationBarColor">@color/stitch_dark_bg</item>
+        <item name="android:windowBackground">@color/stitch_dark_bg</item>
     </style>
 </resources>

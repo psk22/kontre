@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.reelshield.app"
+    namespace = "com.kontre.app"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.reelshield.app"
+        applicationId = "com.kontre.app"
         minSdk = 26
         targetSdk = 35
         versionCode = 23
@@ -20,10 +20,23 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file("reelshield-release.jks")
-            storePassword = "reelshield123"
-            keyAlias = "reelshield"
-            keyPassword = "reelshield123"
+            val keyStoreFilePath = project.findProperty("KEYSTORE_PATH") as? String
+                ?: System.getenv("KEYSTORE_PATH")
+                ?: "reelshield-release.jks"
+            val keyStorePassword = project.findProperty("KEYSTORE_PASSWORD") as? String
+                ?: System.getenv("KEYSTORE_PASSWORD")
+                ?: "reelshield123"
+            val keyStoreAlias = project.findProperty("KEY_ALIAS") as? String
+                ?: System.getenv("KEY_ALIAS")
+                ?: "reelshield"
+            val keyStoreKeyPassword = project.findProperty("KEY_PASSWORD") as? String
+                ?: System.getenv("KEY_PASSWORD")
+                ?: "reelshield123"
+
+            storeFile = file(keyStoreFilePath)
+            storePassword = keyStorePassword
+            keyAlias = keyStoreAlias
+            keyPassword = keyStoreKeyPassword
             enableV1Signing = true
             enableV2Signing = true
             enableV3Signing = true
@@ -33,7 +46,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -44,6 +58,14 @@ android {
             signingConfig = signingConfigs.getByName("release")
         }
     }
+
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "/META-INF/INDEX.LIST"
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -53,6 +75,16 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+
+    applicationVariants.all {
+        val variant = this
+        outputs.all {
+            val output = this as? com.android.build.gradle.internal.api.BaseVariantOutputImpl
+            if (output != null && variant.buildType.name == "release") {
+                output.outputFileName = "Kontre-v${variant.versionName}-release.apk"
+            }
+        }
     }
 }
 
@@ -68,4 +100,35 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
 
     debugImplementation(libs.androidx.ui.tooling)
+}
+
+afterEvaluate {
+    tasks.named("assembleRelease").configure {
+        doLast {
+            val releaseDir = layout.buildDirectory.dir("outputs/apk/release").get().asFile
+            val apkFile = releaseDir.listFiles()?.firstOrNull { it.name.endsWith(".apk") && !it.name.contains("unaligned") }
+            if (apkFile != null && apkFile.exists()) {
+                val rootDir = rootProject.projectDir
+                val parentDir = rootDir.parentFile
+
+                val targetName = "Kontre-release.apk"
+                val targetVersionedName = "Kontre-v${android.defaultConfig.versionName}-release.apk"
+
+                apkFile.copyTo(File(rootDir, targetName), overwrite = true)
+                apkFile.copyTo(File(rootDir, targetVersionedName), overwrite = true)
+                if (parentDir != null && parentDir.exists()) {
+                    apkFile.copyTo(File(parentDir, targetName), overwrite = true)
+                    apkFile.copyTo(File(parentDir, targetVersionedName), overwrite = true)
+                }
+                println("=================================================================")
+                println("Production Release APK generated and copied successfully:")
+                println("  -> ${apkFile.absolutePath}")
+                println("  -> ${File(rootDir, targetName).absolutePath}")
+                if (parentDir != null && parentDir.exists()) {
+                    println("  -> ${File(parentDir, targetName).absolutePath}")
+                }
+                println("=================================================================")
+            }
+        }
+    }
 }

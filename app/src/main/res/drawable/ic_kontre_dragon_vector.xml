@@ -1,0 +1,104 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="200dp"
+    android:viewportWidth="500"
+    android:viewportHeight="500">
+    <!-- Horns / Outer Antlers -->
+    <path
+        android:pathData="M165,155 C150,170 155,240 185,275"
+        android:strokeColor="#07D98C"
+        android:strokeWidth="16"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M335,155 C350,170 345,240 315,275"
+        android:strokeColor="#07D98C"
+        android:strokeWidth="16"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- Central Flame Crest / Crown -->
+    <!-- Center tall flame -->
+    <path
+        android:pathData="M225,180 L250,115 L275,180"
+        android:strokeColor="#07D98C"
+        android:strokeWidth="16"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <!-- Flanking crest spikes -->
+    <path
+        android:pathData="M190,205 L220,145 L225,180"
+        android:strokeColor="#07D98C"
+        android:strokeWidth="16"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M310,205 L280,145 L275,180"
+        android:strokeColor="#07D98C"
+        android:strokeWidth="16"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <!-- Lower forehead zigzag brow -->
+    <path
+        android:pathData="M165,245 L195,240 L220,270 L250,250 L280,270 L305,240 L335,245"
+        android:strokeColor="#07D98C"
+        android:strokeWidth="16"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- Dragon Eye Arches / Brow Lines -->
+    <path
+        android:pathData="M210,288 C220,298 235,298 240,285"
+        android:strokeColor="#07D98C"
+        android:strokeWidth="16"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M290,288 C280,298 265,298 260,285"
+        android:strokeColor="#07D98C"
+        android:strokeWidth="16"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- Snout / Nose bridge lines (3 horizontal ridges) -->
+    <path
+        android:pathData="M240,315 L260,315"
+        android:strokeColor="#07D98C"
+        android:strokeWidth="16"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M240,335 L260,335"
+        android:strokeColor="#07D98C"
+        android:strokeWidth="16"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M240,355 L260,355"
+        android:strokeColor="#07D98C"
+        android:strokeWidth="16"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- Lower Jaw / Snout Outline -->
+    <path
+        android:pathData="M232,295 L232,375 C232,388 268,388 268,375 L268,295"
+        android:strokeColor="#07D98C"
+        android:strokeWidth="16"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- Cheeks / Whiskers / Outer jaw loops -->
+    <path
+        android:pathData="M232,355 C190,375 160,350 172,315 C182,290 215,285 232,298"
+        android:strokeColor="#07D98C"
+        android:strokeWidth="16"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M268,355 C310,375 340,350 328,315 C318,290 285,285 268,298"
+        android:strokeColor="#07D98C"
+        android:strokeWidth="16"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

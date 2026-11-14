@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.Kontre" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@color/stitch_dark_bg</item>
+        <item name="android:navigationBarColor">@color/stitch_dark_bg</item>
+        <item name="android:windowBackground">@color/stitch_dark_bg</item>
+        <item name="android:windowSplashScreenBackground">@color/stitch_dark_bg</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_kontre_dragon_vector</item>
+    </style>
+</resources>

@@ -18,3 +18,9 @@ app/build/
 # Keystore files (keep private if desired, or track if team project)
 # *.jks
 # *.keystore
+
+# Temporary screenshots
+*.png
+*.jpg
+*.xml.dump
+
