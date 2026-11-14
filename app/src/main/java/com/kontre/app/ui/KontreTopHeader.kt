@@ -55,7 +55,7 @@ import com.kontre.app.util.BatteryOptimizationHelper
  */
 @Composable
 fun KontreTopHeader(
-    onMenuClick: () -> Unit,
+    onMenuClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
@@ -63,7 +63,7 @@ fun KontreTopHeader(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.Start,
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Logo + Brand Wordmark (Clean unboxed vector logo)
@@ -85,49 +85,6 @@ fun KontreTopHeader(
                     letterSpacing = 3.sp,
                     color = StitchEmerald
                 )
-            }
-
-            // Hamburger Menu Button (3 crisp white bars in rounded box)
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0x0FFFFFFF))
-                    .border(1.dp, Color(0x1FFFFFFF), RoundedCornerShape(12.dp))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) {
-                        onMenuClick()
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(3.5.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .width(18.dp)
-                            .height(2.2.dp)
-                            .clip(CircleShape)
-                            .background(Color.White)
-                    )
-                    Box(
-                        modifier = Modifier
-                            .width(18.dp)
-                            .height(2.2.dp)
-                            .clip(CircleShape)
-                            .background(Color.White)
-                    )
-                    Box(
-                        modifier = Modifier
-                            .width(18.dp)
-                            .height(2.2.dp)
-                            .clip(CircleShape)
-                            .background(Color.White)
-                    )
-                }
             }
         }
 
