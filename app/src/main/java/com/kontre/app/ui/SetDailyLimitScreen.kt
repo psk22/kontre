@@ -266,55 +266,24 @@ fun SetDailyLimitScreen(
             Spacer(modifier = Modifier.height(2.dp))
 
             // 4. Target Ceiling Section Header (Unboxed)
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(horizontal = 4.dp)
             ) {
-                Column {
-                    Text(
-                        text = "TARGET CEILING",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.5.sp,
-                        color = StitchTextMuted
-                    )
-                    Text(
-                        text = "Adjust daily reel allowance",
-                        fontSize = 10.5.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = StitchTextMuted.copy(alpha = 0.6f)
-                    )
-                }
-
-                // Glowing Emerald Value Badge Pill
-                Box(
-                    modifier = Modifier
-                        .border(1.dp, StitchEmerald.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                        .background(StitchEmerald.copy(alpha = 0.12f))
-                        .padding(horizontal = 12.dp, vertical = 5.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.Bottom,
-                        horizontalArrangement = Arrangement.spacedBy(3.dp)
-                    ) {
-                        Text(
-                            text = "${sliderValue.roundToInt()}",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Black,
-                            color = StitchEmerald
-                        )
-                        Text(
-                            text = "reels",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White.copy(alpha = 0.85f),
-                            modifier = Modifier.padding(bottom = 1.dp)
-                        )
-                    }
-                }
+                Text(
+                    text = "TARGET CEILING",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.5.sp,
+                    color = StitchTextMuted
+                )
+                Text(
+                    text = "Adjust daily reel allowance",
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = StitchTextMuted.copy(alpha = 0.6f)
+                )
             }
 
             // 5. Custom Neon Glow Slider with Floating Live Tooltip
@@ -512,50 +481,10 @@ fun SetDailyLimitScreen(
                 Text(text = "25", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = StitchTextMuted)
                 Text(text = "50", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = StitchTextMuted)
                 Text(text = "75", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = StitchTextMuted)
-                Text(text = "MAX: 100", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text(text = "100", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = StitchTextMuted)
             }
 
-            // 7. Quick Preset Pills (Unboxed Clean Row)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                listOf(10, 25, 50, 75, 100).forEach { preset ->
-                    val isSelected = dailyLimit == preset
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-                                dailyLimit = preset
-                                sliderValue = preset.toFloat()
-                                quotaManager.setDailyLimit(preset)
-                            }
-                            .border(
-                                1.dp,
-                                if (isSelected) StitchEmerald else Color(0x18FFFFFF),
-                                RoundedCornerShape(12.dp)
-                            )
-                            .background(
-                                if (isSelected) StitchEmerald.copy(alpha = 0.14f) else Color(0x06FFFFFF)
-                            )
-                            .padding(vertical = 10.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "$preset",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isSelected) StitchEmerald else Color(0xFFD4D4D8)
-                        )
-                    }
-                }
-            }
-
-            // 8. Resets in countdown (Clean, Unboxed)
+            // 7. Resets in countdown (Clean, Unboxed)
             Text(
                 text = "Resets in: $countdownText",
                 fontSize = 12.sp,
