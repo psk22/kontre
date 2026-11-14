@@ -98,17 +98,6 @@ fun StitchBottomNav(
                         color = textColor,
                         letterSpacing = 0.5.sp
                     )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    // Minimal active pill/dot indicator (unboxed)
-                    Box(
-                        modifier = Modifier
-                            .width(if (isSelected) 16.dp else 0.dp)
-                            .height(2.5.dp)
-                            .clip(CircleShape)
-                            .background(if (isSelected) StitchEmerald else Color.Transparent)
-                    )
                 }
             }
         }
