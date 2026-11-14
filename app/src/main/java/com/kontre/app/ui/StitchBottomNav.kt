@@ -92,15 +92,11 @@ fun StitchBottomNav(
                     verticalArrangement = Arrangement.Center
                 ) {
                     Text(
-                        text = when (tab) {
-                            StitchTab.TOGGLES -> tab.title
-                            StitchTab.LIMITS -> "⏱ ${tab.title}"
-                            StitchTab.STREAKS -> "🐉 ${tab.title}"
-                        },
+                        text = tab.title,
                         fontSize = 13.sp,
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                         color = textColor,
-                        letterSpacing = 0.4.sp
+                        letterSpacing = 0.5.sp
                     )
 
                     Spacer(modifier = Modifier.height(4.dp))
