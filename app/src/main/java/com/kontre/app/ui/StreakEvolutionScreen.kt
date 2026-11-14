@@ -227,6 +227,23 @@ fun StreakEvolutionScreen(
             .fillMaxSize()
             .background(StitchDarkBg)
     ) {
+        // Section Label matching Toggles and Limits pages
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "STREAK EVOLUTION",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 2.5.sp,
+                color = StitchTextMuted,
+                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp, start = 2.dp)
+            )
+        }
+
         // Scrollable Content Body
         Column(
             modifier = Modifier
@@ -236,6 +253,8 @@ fun StreakEvolutionScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            Spacer(modifier = Modifier.height(8.dp))
+
             // 3. Creature Hero Section with Pure Emerald Feathered Radial Aura Glow
             Box(
                 modifier = Modifier
