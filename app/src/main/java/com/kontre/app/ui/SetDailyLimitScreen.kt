@@ -344,46 +344,6 @@ fun SetDailyLimitScreen(
                 }
             }
 
-            // 5. Reset Info & Debug Tools Row
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.dp, Color(0x0FFFFFFF), RoundedCornerShape(16.dp))
-                    .padding(14.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = "MIDNIGHT AUTO-RESET",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp,
-                        color = StitchTextMuted
-                    )
-                    Text(
-                        text = "Resets in: $countdownText",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .border(1.dp, Color(0x3307D98C), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                ) {
-                    Text(
-                        text = "AUTO 00:00",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.5.sp,
-                        color = StitchEmerald
-                    )
-                }
-            }
-
             Spacer(modifier = Modifier.height(16.dp))
         }
     }
