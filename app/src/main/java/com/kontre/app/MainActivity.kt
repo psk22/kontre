@@ -278,6 +278,11 @@ fun MainScreenContainer(
             )
         }
 
+        // Close drawer with system back gesture
+        BackHandler(enabled = showDrawer && activeDialog == null) {
+            showDrawer = false
+        }
+
         // Global Navigation Drawer Modal Overlay
         AnimatedVisibility(
             visible = showDrawer,

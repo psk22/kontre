@@ -169,47 +169,25 @@ fun StitchNavigationDrawer(
             // Bring everything down comfortably from the top
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Drawer Top Row
+            // Drawer Top Row (Clean logo & wordmark)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_kontre_dragon_vector),
-                        contentDescription = "Kontre Dragon Logo",
-                        tint = StitchEmerald,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Text(
-                        text = "KONTRE",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 2.sp,
-                        color = StitchEmerald
-                    )
-                }
-
-                // Close Button
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0x0FFFFFFF))
-                        .clickable { onClose() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "✕",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                }
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_kontre_dragon_vector),
+                    contentDescription = "Kontre Dragon Logo",
+                    tint = StitchEmerald,
+                    modifier = Modifier.size(24.dp)
+                )
+                Text(
+                    text = "KONTRE",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 2.sp,
+                    color = StitchEmerald
+                )
             }
 
             // Section Subtitle
