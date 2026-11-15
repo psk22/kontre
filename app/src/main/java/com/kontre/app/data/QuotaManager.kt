@@ -33,22 +33,23 @@ class QuotaManager(context: Context) {
 
     companion object {
         const val DEFAULT_DAILY_LIMIT = 50
+        const val PREFS_NAME = "kontre_prefs"
 
-        private const val KEY_LAST_DATE = "key_last_date"
-        private const val KEY_REELS_COUNT = "key_reels_count"
-        private const val KEY_SHORTS_COUNT = "key_shorts_count"
-        private const val KEY_BLOCKED_COUNT = "key_blocked_count"
-        private const val KEY_DAILY_LIMIT = "key_daily_limit"
+        const val KEY_LAST_DATE = "key_last_date"
+        const val KEY_REELS_COUNT = "key_reels_count"
+        const val KEY_SHORTS_COUNT = "key_shorts_count"
+        const val KEY_BLOCKED_COUNT = "key_blocked_count"
+        const val KEY_DAILY_LIMIT = "key_daily_limit"
 
-        private const val KEY_BLOCK_INSTAGRAM = "key_block_instagram"
-        private const val KEY_BLOCK_YOUTUBE = "key_block_youtube"
-        private const val KEY_STRICT_MODE = "key_strict_mode"
-        private const val KEY_TOTAL_BLOCK = "key_total_block"
+        const val KEY_BLOCK_INSTAGRAM = "key_block_instagram"
+        const val KEY_BLOCK_YOUTUBE = "key_block_youtube"
+        const val KEY_STRICT_MODE = "key_strict_mode"
+        const val KEY_TOTAL_BLOCK = "key_total_block"
         const val KEY_SHOW_FLOATING_COUNTER = "key_show_floating_counter"
 
-        private const val KEY_CURRENT_STREAK = "key_current_streak"
-        private const val KEY_HIGHEST_STREAK = "key_highest_streak"
-        private const val KEY_STREAK_START_DATE = "key_streak_start_date"
+        const val KEY_CURRENT_STREAK = "key_current_streak"
+        const val KEY_HIGHEST_STREAK = "key_highest_streak"
+        const val KEY_STREAK_START_DATE = "key_streak_start_date"
 
         const val DEFAULT_CURRENT_STREAK = 50
         const val DEFAULT_HIGHEST_STREAK = 61

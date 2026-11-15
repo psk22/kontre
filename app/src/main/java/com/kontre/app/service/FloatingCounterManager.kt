@@ -2,6 +2,7 @@ package com.kontre.app.service
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
+import android.content.SharedPreferences
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
@@ -23,6 +24,7 @@ class FloatingCounterManager(private val service: AccessibilityService) {
     private val windowManager = service.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val mainHandler = Handler(Looper.getMainLooper())
     private val prefs = service.getSharedPreferences("floating_counter_prefs", Context.MODE_PRIVATE)
+    private val kontrePrefs = service.getSharedPreferences(QuotaManager.PREFS_NAME, Context.MODE_PRIVATE)
     private val quotaManager by lazy { QuotaManager(service) }
 
     // Strict single instance pattern: exactly one container & one textview
@@ -38,8 +40,44 @@ class FloatingCounterManager(private val service: AccessibilityService) {
     var isDragging = false
         private set
 
-    private var currentCount = 0
-    private var currentLimit = 50
+    var currentCount = 0
+        private set
+    var currentLimit = 50
+        private set
+
+    private val prefChangeListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == QuotaManager.KEY_DAILY_LIMIT || key == QuotaManager.KEY_TOTAL_BLOCK ||
+            key == QuotaManager.KEY_REELS_COUNT || key == QuotaManager.KEY_SHORTS_COUNT ||
+            key == QuotaManager.KEY_SHOW_FLOATING_COUNTER) {
+            syncStateRealtime()
+        }
+    }
+
+    init {
+        try {
+            kontrePrefs.registerOnSharedPreferenceChangeListener(prefChangeListener)
+        } catch (_: Exception) {}
+    }
+
+    fun syncStateRealtime() {
+        if (!quotaManager.isFloatingCounterEnabled) {
+            hide()
+            return
+        }
+        val freshCount = quotaManager.totalCount
+        val freshLimit = if (quotaManager.isTotalBlockEnabled) 0 else quotaManager.dailyLimit
+        currentCount = freshCount
+        currentLimit = freshLimit
+        mainHandler.post {
+            try {
+                if (isShowing && overlayContainer?.isAttachedToWindow == true) {
+                    updateText(freshCount, freshLimit)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error updating real-time text: ${e.message}")
+            }
+        }
+    }
 
     companion object {
         private const val TAG = "FloatingCounterManager"
@@ -250,6 +288,9 @@ class FloatingCounterManager(private val service: AccessibilityService) {
     }
 
     fun destroy() {
+        try {
+            kontrePrefs.unregisterOnSharedPreferenceChangeListener(prefChangeListener)
+        } catch (_: Exception) {}
         mainHandler.post {
             isDragging = false
             val container = overlayContainer
@@ -278,7 +319,7 @@ class FloatingCounterManager(private val service: AccessibilityService) {
         overlayContainer?.let { container ->
             (container.background as? GradientDrawable)?.setStroke(
                 dpToPx(1.5f).toInt(),
-                if (isOver) Color.parseColor("#FF4A36") else Color.parseColor("#55FF4A36")
+                if (isOver) Color.parseColor("#FF4A36") else Color.parseColor("#5507D98C")
             )
         }
     }

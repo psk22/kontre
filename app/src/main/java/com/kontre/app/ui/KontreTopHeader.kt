@@ -264,7 +264,7 @@ fun StitchNavigationDrawer(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
-                text = "— VERSION 1.8.6 —",
+                text = "— VERSION 1.8.7 —",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.5.sp,
@@ -848,7 +848,7 @@ fun StitchCreditsDialog(onDismiss: () -> Unit) {
                         letterSpacing = 1.sp
                     )
                     Text(
-                        text = "Version 1.8.6 (Build 25) • Target Android 15 (SDK 35)\n" +
+                        text = "Version 1.8.7 (Build 26) • Target Android 15 (SDK 35)\n" +
                                 "Architecture: Clean Compose MVI + SharedPreferences\n" +
                                 "Design Language: Cyber Obsidian Emerald",
                         fontSize = 10.sp,

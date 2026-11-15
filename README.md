@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-1.8.6-07D98C?style=for-the-badge&logo=android&logoColor=white" alt="Version 1.8.6" />
+  <img src="https://img.shields.io/badge/Version-1.8.7-07D98C?style=for-the-badge&logo=android&logoColor=white" alt="Version 1.8.7" />
   <img src="https://img.shields.io/badge/Platform-Android_15_(API_35)-10B981?style=for-the-badge&logo=android" alt="Android 15" />
   <img src="https://img.shields.io/badge/UI-Jetpack_Compose-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white" alt="Jetpack Compose" />
   <img src="https://img.shields.io/badge/License-MIT-emerald?style=for-the-badge" alt="MIT License" />
@@ -133,7 +133,7 @@ com.kontre.app
 
 ### Option 1: Direct APK Download
 Download the signed release APK directly from GitHub Releases:
-- **[Latest Release (v1.8.6)](https://github.com/psk22/kontre/releases/latest)**
+- **[Latest Release (v1.8.7)](https://github.com/psk22/kontre/releases/latest)**
 
 ### Option 2: Build From Source
 ```bash

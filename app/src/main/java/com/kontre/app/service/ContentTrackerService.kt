@@ -448,6 +448,13 @@ open class ContentTrackerService : AccessibilityService() {
             val isCurrentPlatformBlockActive = if (pkg == PACKAGE_YOUTUBE) quotaManager.isYouTubeBlockEnabled else quotaManager.isInstagramBlockEnabled
             if (!quotaManager.isFloatingCounterEnabled || (isCurrentPlatformBlockActive && quotaManager.isLimitReached)) {
                 floatingCounterManager.hide()
+            } else if (floatingCounterManager.isShowing && !floatingCounterManager.isDragging) {
+                // Real-time synchronization: update count and limit denominator if changed
+                val freshCount = quotaManager.totalCount
+                val freshLimit = if (quotaManager.dailyLimit > 0) quotaManager.dailyLimit else quotaManager.targetDailyLimit
+                if (floatingCounterManager.currentLimit != freshLimit || floatingCounterManager.currentCount != freshCount) {
+                    floatingCounterManager.showOrUpdate(freshCount, freshLimit, enforceLimitHide = isCurrentPlatformBlockActive)
+                }
             }
 
             mainHandler.postDelayed(this, WATCHDOG_INTERVAL_MS)
