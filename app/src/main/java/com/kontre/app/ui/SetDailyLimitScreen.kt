@@ -80,8 +80,9 @@ fun SetDailyLimitScreen(
     var reelsCount by remember { mutableIntStateOf(quotaManager.reelsCount) }
     var shortsCount by remember { mutableIntStateOf(quotaManager.shortsCount) }
     val totalCount = reelsCount + shortsCount
-    var dailyLimit by remember { mutableIntStateOf(quotaManager.dailyLimit) }
-    var sliderValue by remember { mutableFloatStateOf(dailyLimit.toFloat().coerceIn(0f, 100f)) }
+    val minAllowedLimit = totalCount.coerceIn(0, 100)
+    var dailyLimit by remember { mutableIntStateOf(maxOf(quotaManager.dailyLimit, minAllowedLimit)) }
+    var sliderValue by remember { mutableFloatStateOf(dailyLimit.toFloat().coerceIn(minAllowedLimit.toFloat(), 100f)) }
 
     var isDragging by remember { mutableStateOf(false) }
     var countdownText by remember { mutableStateOf(quotaManager.getTimeUntilMidnightFormatted()) }
@@ -91,13 +92,23 @@ fun SetDailyLimitScreen(
         quotaManager.totalCountFlow.collect {
             reelsCount = quotaManager.reelsCount
             shortsCount = quotaManager.shortsCount
+            val currentFloor = (quotaManager.reelsCount + quotaManager.shortsCount).coerceIn(0, 100)
+            if (sliderValue < currentFloor) {
+                sliderValue = currentFloor.toFloat()
+            }
+            if (dailyLimit < currentFloor) {
+                dailyLimit = currentFloor
+                quotaManager.setDailyLimit(currentFloor)
+            }
         }
     }
     LaunchedEffect(Unit) {
         quotaManager.dailyLimitFlow.collect { newLimit ->
-            dailyLimit = newLimit
+            val currentFloor = (reelsCount + shortsCount).coerceIn(0, 100)
+            val effectiveLimit = maxOf(newLimit, currentFloor)
+            dailyLimit = effectiveLimit
             if (!isDragging) {
-                sliderValue = newLimit.toFloat().coerceIn(0f, 100f)
+                sliderValue = effectiveLimit.toFloat().coerceIn(currentFloor.toFloat(), 100f)
             }
         }
     }
@@ -147,6 +158,16 @@ fun SetDailyLimitScreen(
             color = android.graphics.Color.parseColor("#07D98C")
             textSize = with(density) { 11.sp.toPx() }
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+            isAntiAlias = true
+        }
+    }
+
+    val scaleDimmedTextPaint = remember(density) {
+        Paint().apply {
+            color = android.graphics.Color.parseColor("#383842")
+            textSize = with(density) { 11.sp.toPx() }
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             textAlign = Paint.Align.CENTER
             isAntiAlias = true
         }
@@ -299,10 +320,10 @@ fun SetDailyLimitScreen(
                     color = StitchTextMuted
                 )
                 Text(
-                    text = "Adjust daily reel allowance",
+                    text = if (minAllowedLimit > 0) "Locked floor at $minAllowedLimit (already watched)" else "Adjust daily reel allowance",
                     fontSize = 10.5.sp,
                     fontWeight = FontWeight.Medium,
-                    color = StitchTextMuted.copy(alpha = 0.6f)
+                    color = if (minAllowedLimit > 0) StitchEmerald.copy(alpha = 0.85f) else StitchTextMuted.copy(alpha = 0.6f)
                 )
             }
 
@@ -316,33 +337,38 @@ fun SetDailyLimitScreen(
                 Canvas(
                     modifier = Modifier
                         .fillMaxSize()
-                        .pointerInput(Unit) {
+                        .pointerInput(minAllowedLimit) {
                             detectTapGestures { offset ->
                                 val paddingPx = 16.dp.toPx()
                                 val availableWidth = size.width - 2 * paddingPx
                                 val fraction = ((offset.x - paddingPx) / availableWidth).coerceIn(0f, 1f)
-                                val newInt = (fraction * 100f).roundToInt()
-                                if (newInt != dailyLimit) {
+                                val rawInt = (fraction * 100f).roundToInt()
+                                val clampedInt = rawInt.coerceIn(minAllowedLimit, 100)
+                                if (rawInt < minAllowedLimit) {
+                                    view.performHapticFeedback(HapticFeedbackConstants.REJECT)
+                                }
+                                if (clampedInt != dailyLimit) {
                                     view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                                    dailyLimit = newInt
-                                    sliderValue = newInt.toFloat()
-                                    quotaManager.setDailyLimit(newInt)
+                                    dailyLimit = clampedInt
+                                    sliderValue = clampedInt.toFloat()
+                                    quotaManager.setDailyLimit(clampedInt)
                                 }
                             }
                         }
-                        .pointerInput(Unit) {
+                        .pointerInput(minAllowedLimit) {
                             detectDragGestures(
                                 onDragStart = { offset ->
                                     isDragging = true
                                     val paddingPx = 16.dp.toPx()
                                     val availableWidth = size.width - 2 * paddingPx
                                     val fraction = ((offset.x - paddingPx) / availableWidth).coerceIn(0f, 1f)
-                                    val newInt = (fraction * 100f).roundToInt()
-                                    if (newInt != dailyLimit) {
+                                    val rawInt = (fraction * 100f).roundToInt()
+                                    val clampedInt = rawInt.coerceIn(minAllowedLimit, 100)
+                                    if (clampedInt != dailyLimit) {
                                         view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                                        dailyLimit = newInt
-                                        sliderValue = newInt.toFloat()
-                                        quotaManager.setDailyLimit(newInt)
+                                        dailyLimit = clampedInt
+                                        sliderValue = clampedInt.toFloat()
+                                        quotaManager.setDailyLimit(clampedInt)
                                     }
                                 },
                                 onDragEnd = { isDragging = false },
@@ -352,12 +378,13 @@ fun SetDailyLimitScreen(
                                     val paddingPx = 16.dp.toPx()
                                     val availableWidth = size.width - 2 * paddingPx
                                     val fraction = ((change.position.x - paddingPx) / availableWidth).coerceIn(0f, 1f)
-                                    val newInt = (fraction * 100f).roundToInt()
-                                    sliderValue = fraction * 100f
-                                    if (newInt != dailyLimit) {
+                                    val rawInt = (fraction * 100f).roundToInt()
+                                    val clampedInt = rawInt.coerceIn(minAllowedLimit, 100)
+                                    sliderValue = (fraction * 100f).coerceIn(minAllowedLimit.toFloat(), 100f)
+                                    if (clampedInt != dailyLimit) {
                                         view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                                        dailyLimit = newInt
-                                        quotaManager.setDailyLimit(newInt)
+                                        dailyLimit = clampedInt
+                                        quotaManager.setDailyLimit(clampedInt)
                                     }
                                 }
                             )
@@ -382,6 +409,19 @@ fun SetDailyLimitScreen(
                         strokeWidth = trackHeight,
                         cap = StrokeCap.Round
                     )
+
+                    // Consumed Floor Track (already watched reels floor)
+                    val floorFraction = minAllowedLimit / 100f
+                    val floorX = paddingPx + floorFraction * availableTrackWidth
+                    if (floorX > trackLeft) {
+                        drawLine(
+                            color = Color(0xFF2D313E),
+                            start = Offset(trackLeft, trackCenterY),
+                            end = Offset(floorX, trackCenterY),
+                            strokeWidth = trackHeight,
+                            cap = StrokeCap.Round
+                        )
+                    }
 
                     // Tick Notch Dots along the Track
                     listOf(0, 25, 50, 75, 100).forEach { notch ->
@@ -504,11 +544,17 @@ fun SetDailyLimitScreen(
                         val tickFraction = tickVal / 100f
                         val tickX = paddingPx + tickFraction * availableTrackWidth
                         val isSelected = sliderValue.roundToInt() == tickVal
+                        val isLockedFloor = tickVal < minAllowedLimit
+                        val paint = when {
+                            isSelected -> scaleActiveTextPaint
+                            isLockedFloor -> scaleDimmedTextPaint
+                            else -> scaleTextPaint
+                        }
                         drawContext.canvas.nativeCanvas.drawText(
                             tickVal.toString(),
                             tickX,
                             scaleY,
-                            if (isSelected) scaleActiveTextPaint else scaleTextPaint
+                            paint
                         )
                     }
                 }
