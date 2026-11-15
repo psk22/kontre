@@ -66,10 +66,7 @@ fun PlatformTogglesScreen(
             .padding(horizontal = 24.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        // Comfortable top spacer to move content a little down from the top header
-        Spacer(modifier = Modifier.height(28.dp))
-
-        // Section Label
+        // Section Label (original top position aligned across all tabs)
         Text(
             text = "PLATFORM TOGGLES",
             fontSize = 11.sp,
@@ -78,6 +75,9 @@ fun PlatformTogglesScreen(
             color = StitchTextMuted,
             modifier = Modifier.padding(top = 8.dp, bottom = 8.dp, start = 2.dp)
         )
+
+        // Move toggle contents a little down
+        Spacer(modifier = Modifier.height(24.dp))
 
         // 1. YouTube Shorts Toggle
         StitchToggleRow(
