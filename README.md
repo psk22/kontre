@@ -1,6 +1,6 @@
 <h1 align="center">
-  <font face="Space Grotesk, Plus Jakarta Sans, sans-serif" size="7">
-    <span style="font-family: 'Space Grotesk', 'Plus Jakarta Sans', sans-serif; font-size: 3.5rem; font-weight: 800; letter-spacing: 0.25em;">
+  <font color="#07D98C" face="Space Grotesk, Plus Jakarta Sans, sans-serif" size="7">
+    <span style="color: #07D98C; font-family: 'Space Grotesk', 'Plus Jakarta Sans', sans-serif; font-size: 3.5rem; font-weight: 800; letter-spacing: 0.25em;">
       <b>KONTRE</b>
     </span>
   </font>
