@@ -1,10 +1,6 @@
 # 🐲 Kontre — Reclaim Your Attention • Master Your Feed
 
 <p align="center">
-  <img src="docs/screenshots/1.jpg" width="180" alt="Kontre Logo" style="border-radius: 24px;" />
-</p>
-
-<p align="center">
   <strong>A next-generation, on-device digital wellbeing guardian built with Kotlin & Jetpack Compose.</strong><br>
   Target SDK 35 • Android 15 Ready • 100% Air-Gapped Silicon • Zero Cloud Telemetry
 </p>
@@ -25,10 +21,10 @@ Kontre pairs surgical short-form blocking with a high-end, cyberpunk emerald des
 
 ### Core Interface
 
-| 🐲 Dragon Emblem | 🎛️ Platform Toggles | 🎯 Limits & Target Ceiling |
+| ⚡ Splash / Awakening | 🎛️ Platform Toggles | 🎯 Limits & Target Ceiling |
 | :---: | :---: | :---: |
-| <img src="docs/screenshots/1.jpg" width="260" alt="Kontre Dragon Emblem" /> | <img src="docs/screenshots/2.jpg" width="260" alt="Platform Toggles Screen" /> | <img src="docs/screenshots/3.jpg" width="260" alt="Set Daily Limit Screen" /> |
-| *Official Emerald Dragon Emblem* | *Surgical Switches for Shorts, Reels & HUD* | *Radial Consumption Dial & Locked Floor Slider* |
+| <img src="docs/screenshots/1.jpg" width="260" alt="Kontre Splash Screen" /> | <img src="docs/screenshots/2.jpg" width="260" alt="Platform Toggles Screen" /> | <img src="docs/screenshots/3.jpg" width="260" alt="Set Daily Limit Screen" /> |
+| *Breathing Dragon Mascot & Fast Initialization* | *Surgical Switches for Shorts, Reels & HUD* | *Radial Consumption Dial & Locked Floor Slider* |
 
 ---
 
