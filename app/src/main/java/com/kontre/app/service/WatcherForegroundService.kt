@@ -210,8 +210,10 @@ open class WatcherForegroundService : Service() {
             Log.e(TAG, "Failed in startForeground", e)
         }
 
-        // Trigger immediate watchdog ping on start
-        performWatchdogCheck()
+        // Trigger watchdog check on start if service is enabled
+        if (isAccessibilityServiceEnabled(this)) {
+            performWatchdogCheck()
+        }
 
         return START_STICKY
     }
@@ -328,12 +330,18 @@ open class WatcherForegroundService : Service() {
      * Executes the Dual-Service Watchdog check:
      * 1. Broadcasts an IPC ping to VideoBlockerAccessibilityService.
      * 2. Inspects whether the accessibility service is alive or killed by OEM deep sleep.
-     * 3. Triggers a high-priority reminder notification if dead.
+     * 3. Triggers a reminder notification if enabled in Settings but killed.
      */
     fun performWatchdogCheck() {
         val now = System.currentTimeMillis()
         val isSettingsEnabled = isAccessibilityServiceEnabled(this)
         val isServiceInstantiated = VideoBlockerAccessibilityService.instance != null
+
+        // If not enabled in Android Settings yet (e.g. fresh install), do NOT alert as dead.
+        if (!isSettingsEnabled) {
+            dismissAccessibilityAlertNotification()
+            return
+        }
 
         // 1. Send IPC Broadcast Ping
         lastPingSentTimestamp = now
@@ -348,14 +356,14 @@ open class WatcherForegroundService : Service() {
         }
 
         // 2. Evaluate liveness criteria:
-        // A service is considered dead if:
-        // - It has been disabled in Android Settings, OR
-        // - It is not instantiated after startup grace period (30s), OR
+        // A service is considered killed if:
+        // - Settings ARE enabled, BUT
+        // - It is not instantiated after startup grace period (45s), OR
         // - It missed pongs for > 90 seconds (1.5 watchdog intervals)
         val hasMissedPong = lastAccessibilityPongTimestamp > 0L && (now - lastAccessibilityPongTimestamp > 90_000L)
-        val isNotRunning = !isServiceInstantiated && (now - serviceStartTime > 30_000L)
+        val isNotRunning = !isServiceInstantiated && (now - serviceStartTime > 45_000L)
 
-        val isDead = !isSettingsEnabled || isNotRunning || hasMissedPong
+        val isDead = isNotRunning || hasMissedPong
 
         if (isDead) {
             Log.w(
@@ -374,51 +382,55 @@ open class WatcherForegroundService : Service() {
      * Shows a local high-priority reminder notification directing user to re-enable accessibility.
      */
     private fun showAccessibilityAlertNotification() {
-        val notificationManager = getSystemService(NotificationManager::class.java) ?: return
+        try {
+            val notificationManager = getSystemService(NotificationManager::class.java) ?: return
 
-        // Intent to open Android Accessibility Settings directly
-        val settingsIntent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        val settingsPendingIntent = PendingIntent.getActivity(
-            this,
-            101,
-            settingsIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        // Intent to open MainActivity
-        val appIntent = Intent(this, MainActivity::class.java).apply {
-            putExtra("EXTRA_OPEN_ACCESSIBILITY", true)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        }
-        val appPendingIntent = PendingIntent.getActivity(
-            this,
-            102,
-            appIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        val notification = NotificationCompat.Builder(this, CHANNEL_ALERT_ID)
-            .setContentTitle("⚠️ Focus Shield Protection Inactive")
-            .setContentText("Short-form video blocker was stopped by the system. Tap to re-enable.")
-            .setStyle(
-                NotificationCompat.BigTextStyle().bigText(
-                    "Video Blocker Accessibility Service was stopped by Android or OEM deep sleep " +
-                            "(HyperOS, ColorOS, One UI). Tap Re-Enable to restore your focus limits."
-                )
+            // Intent to open Android Accessibility Settings directly
+            val settingsIntent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            val settingsPendingIntent = PendingIntent.getActivity(
+                this,
+                101,
+                settingsIntent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             )
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setAutoCancel(true)
-            .setContentIntent(appPendingIntent)
-            .addAction(0, "Re-Enable", settingsPendingIntent)
-            .build()
 
-        notificationManager.notify(ALERT_NOTIFICATION_ID, notification)
-        isAlertNotificationShowing = true
-        Log.w(TAG, "High-priority accessibility alert notification displayed.")
+            // Intent to open MainActivity
+            val appIntent = Intent(this, MainActivity::class.java).apply {
+                putExtra("EXTRA_OPEN_ACCESSIBILITY", true)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
+            val appPendingIntent = PendingIntent.getActivity(
+                this,
+                102,
+                appIntent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+
+            val notification = NotificationCompat.Builder(this, CHANNEL_ALERT_ID)
+                .setContentTitle("⚠️ Focus Shield Protection Inactive")
+                .setContentText("Short-form video blocker was stopped by the system. Tap to re-enable.")
+                .setStyle(
+                    NotificationCompat.BigTextStyle().bigText(
+                        "Video Blocker Accessibility Service was stopped by Android or OEM deep sleep " +
+                                "(HyperOS, ColorOS, One UI). Tap Re-Enable to restore your focus limits."
+                    )
+                )
+                .setSmallIcon(R.drawable.ic_kontre_dragon_vector)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_STATUS)
+                .setAutoCancel(true)
+                .setContentIntent(appPendingIntent)
+                .addAction(0, "Re-Enable", settingsPendingIntent)
+                .build()
+
+            notificationManager.notify(ALERT_NOTIFICATION_ID, notification)
+            isAlertNotificationShowing = true
+            Log.w(TAG, "Accessibility alert notification displayed.")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to display accessibility alert notification safely", e)
+        }
     }
 
     private fun dismissAccessibilityAlertNotification() {
@@ -448,22 +460,26 @@ open class WatcherForegroundService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        val notification = NotificationCompat.Builder(this, CHANNEL_BATTERY_ID)
-            .setContentTitle("⚠️ Background Keep-Alive Warning")
-            .setContentText("Exempt Kontre from battery optimization to prevent OEM kills.")
-            .setStyle(
-                NotificationCompat.BigTextStyle().bigText(
-                    "Aggressive OEM task killers (One UI, HyperOS, ColorOS) may terminate background monitoring. " +
-                            "Tap to configure auto-start and unconstrained background battery permissions."
+        try {
+            val notification = NotificationCompat.Builder(this, CHANNEL_BATTERY_ID)
+                .setContentTitle("⚠️ Background Keep-Alive Warning")
+                .setContentText("Exempt Kontre from battery optimization to prevent OEM kills.")
+                .setStyle(
+                    NotificationCompat.BigTextStyle().bigText(
+                        "Aggressive OEM task killers (One UI, HyperOS, ColorOS) may terminate background monitoring. " +
+                                "Tap to configure auto-start and unconstrained background battery permissions."
+                    )
                 )
-            )
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setAutoCancel(true)
-            .setContentIntent(pendingIntent)
-            .build()
+                .setSmallIcon(R.drawable.ic_kontre_dragon_vector)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent)
+                .build()
 
-        notificationManager.notify(BATTERY_NOTIFICATION_ID, notification)
+            notificationManager.notify(BATTERY_NOTIFICATION_ID, notification)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to display battery optimization notification safely", e)
+        }
     }
 
     private fun createNotificationChannels() {
@@ -517,7 +533,7 @@ open class WatcherForegroundService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Focus Monitor Active")
             .setContentText("Protecting your focus • Short-form limits enforced")
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_kontre_dragon_vector)
             .setOngoing(true)
             .setContentIntent(pendingIntent)
             .setPriority(NotificationCompat.PRIORITY_MIN)

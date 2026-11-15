@@ -140,14 +140,34 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(true)
-            setTurnScreenOn(true)
+
+        try {
+            quotaManager = QuotaManager(this)
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Failed to initialize QuotaManager", e)
         }
-        quotaManager = QuotaManager(this)
-        WatcherForegroundService.start(this)
-        ResuscitationWorker.schedule(this)
-        handleNotificationIntent(intent)
+
+        // Only start WatcherForegroundService if accessibility service is enabled by the user
+        try {
+            if (::quotaManager.isInitialized && WatcherForegroundService.isAccessibilityServiceEnabled(this)) {
+                WatcherForegroundService.start(this)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Failed to start WatcherForegroundService safely", e)
+        }
+
+        // Schedule periodic resuscitation background worker
+        try {
+            ResuscitationWorker.schedule(this)
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Failed to schedule ResuscitationWorker safely", e)
+        }
+
+        try {
+            handleNotificationIntent(intent)
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Failed to handle notification intent", e)
+        }
 
         setContent {
             KontreTheme {
@@ -159,7 +179,11 @@ class MainActivity : ComponentActivity() {
                     if (showSplash) {
                         SplashScreen(onFinish = { showSplash = false })
                     } else {
-                        MainScreenContainer(quotaManager = quotaManager)
+                        if (::quotaManager.isInitialized) {
+                            MainScreenContainer(quotaManager = quotaManager)
+                        } else {
+                            MainScreenContainer(quotaManager = QuotaManager(LocalContext.current))
+                        }
                     }
                 }
             }

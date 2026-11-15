@@ -19,10 +19,15 @@ app/build/
 # *.jks
 # *.keystore
 
-# Temporary screenshots
-*.png
-*.jpg
-*.xml.dump
+# Temporary root files
+/*.png
+/*.jpg
+/*.xml.dump
+/classes.dex
+
+# Ensure all resources and docs are always tracked
+!app/src/main/res/**
+!docs/**
 
 # Documentation and README screenshots
 !docs/screenshots/*.jpg
