@@ -136,7 +136,7 @@ private fun CreditsHeroBanner() {
                 color = Color.White
             )
             Text(
-                text = "Version 1.8.4 • Build 23 • Target Android 15 (SDK 35)",
+                text = "Version 1.8.5 • Build 24 • Target Android 15 (SDK 35)",
                 fontSize = 10.sp,
                 fontFamily = FontFamily.Monospace,
                 color = StitchEmerald

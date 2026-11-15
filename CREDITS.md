@@ -17,7 +17,7 @@
 
 * **App Name:** Kontre
 * **Package Name:** `com.kontre.app`
-* **Version:** 1.8.4
+* **Version:** 1.8.5
 * **Tagline:** Reclaim your focus. Master your feed.
 * **Mission:** Kontre empowers individuals to break free from compulsive, algorithmic infinite-scroll loops. By providing strict on-device daily reel quotas, real-time visual tracking, and customizable platform blockers for YouTube Shorts and Instagram Reels, Kontre helps you build intentional digital habits while preserving total personal privacy.
 
