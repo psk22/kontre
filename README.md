@@ -1,4 +1,4 @@
-# 🐲 Kontre — Reclaim Your Attention • Master Your Feed
+ Kontre
 
 <p align="center">
   <strong>A next-generation, on-device digital wellbeing guardian built with Kotlin & Jetpack Compose.</strong><br>
