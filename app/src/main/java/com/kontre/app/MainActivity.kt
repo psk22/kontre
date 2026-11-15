@@ -99,10 +99,11 @@ import com.kontre.app.ui.theme.StatusGreenMuted
 import com.kontre.app.ui.theme.WhisperBorder
 import com.kontre.app.ui.KontreTopHeader
 import com.kontre.app.ui.StitchNavigationDrawer
-import com.kontre.app.ui.StitchPrivacyDialog
-import com.kontre.app.ui.StitchPermissionsDialog
-import com.kontre.app.ui.StitchCreditsDialog
+import com.kontre.app.ui.AboutLoreScreen
+import com.kontre.app.ui.PermissionsMatrixScreen
+import com.kontre.app.ui.PrivacyVaultScreen
 import com.kontre.app.ui.TogglesDialogType
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -318,22 +319,34 @@ fun MainScreenContainer(
             )
         }
 
-        // Global Dialogs
-        when (activeDialog) {
-            TogglesDialogType.PRIVACY_POLICY -> {
-                StitchPrivacyDialog(onDismiss = { activeDialog = null })
+        // Dedicated Full-Screen Sub-Pages (Option A) with Back Gesture & Transition
+        BackHandler(enabled = activeDialog != null) {
+            activeDialog = null
+        }
+
+        AnimatedVisibility(
+            visible = activeDialog != null,
+            enter = slideInHorizontally(
+                initialOffsetX = { it },
+                animationSpec = tween(280, easing = FastOutSlowInEasing)
+            ) + fadeIn(animationSpec = tween(280)),
+            exit = slideOutHorizontally(
+                targetOffsetX = { it },
+                animationSpec = tween(240, easing = FastOutSlowInEasing)
+            ) + fadeOut(animationSpec = tween(240))
+        ) {
+            when (activeDialog) {
+                TogglesDialogType.ABOUT_LORE -> {
+                    AboutLoreScreen(onBack = { activeDialog = null })
+                }
+                TogglesDialogType.PERMISSIONS -> {
+                    PermissionsMatrixScreen(onBack = { activeDialog = null })
+                }
+                TogglesDialogType.PRIVACY_VAULT -> {
+                    PrivacyVaultScreen(onBack = { activeDialog = null })
+                }
+                null -> Unit
             }
-            TogglesDialogType.PERMISSIONS -> {
-                StitchPermissionsDialog(
-                    context = context,
-                    isAccessibilityEnabled = isAccessibilityEnabled,
-                    onDismiss = { activeDialog = null }
-                )
-            }
-            TogglesDialogType.CREDITS -> {
-                StitchCreditsDialog(onDismiss = { activeDialog = null })
-            }
-            null -> Unit
         }
     }
 }
@@ -1255,7 +1268,7 @@ fun PermissionWizardCard(
 }
 
 
-private fun isAccessibilityServiceActive(context: Context): Boolean {
+fun isAccessibilityServiceActive(context: Context): Boolean {
     val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager ?: return false
     val enabledServices = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
     return enabledServices.any { service ->

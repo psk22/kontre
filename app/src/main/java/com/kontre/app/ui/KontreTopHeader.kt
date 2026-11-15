@@ -241,8 +241,8 @@ fun StitchNavigationDrawer(
             // Navigation Options
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 DrawerNavigationItem(
-                    label = "PRIVACY POLICY",
-                    onClick = { onSelectOption(TogglesDialogType.PRIVACY_POLICY) }
+                    label = "ABOUT & LORE",
+                    onClick = { onSelectOption(TogglesDialogType.ABOUT_LORE) }
                 )
                 Box(
                     modifier = Modifier
@@ -261,8 +261,8 @@ fun StitchNavigationDrawer(
                         .background(Color(0x14FFFFFF))
                 )
                 DrawerNavigationItem(
-                    label = "CREDITS",
-                    onClick = { onSelectOption(TogglesDialogType.CREDITS) }
+                    label = "PRIVACY VAULT",
+                    onClick = { onSelectOption(TogglesDialogType.PRIVACY_VAULT) }
                 )
             }
         }
@@ -963,8 +963,8 @@ private fun OpenSourceLibItem(
 }
 
 enum class TogglesDialogType {
-    PRIVACY_POLICY,
+    ABOUT_LORE,
     PERMISSIONS,
-    CREDITS
+    PRIVACY_VAULT
 }
 
