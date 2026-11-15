@@ -66,6 +66,8 @@ fun PlatformTogglesScreen(
             .padding(horizontal = 24.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
+        // Comfortable top spacer to move content a little down from the top header
+        Spacer(modifier = Modifier.height(28.dp))
 
         // Section Label
         Text(
