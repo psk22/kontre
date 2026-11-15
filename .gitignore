@@ -24,5 +24,9 @@ app/build/
 *.jpg
 *.xml.dump
 
+# Documentation and README screenshots
+!docs/screenshots/*.jpg
+!docs/screenshots/*.png
+
 
 .kotlin/
