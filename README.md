@@ -1,4 +1,15 @@
-# 🐲 Kontre — Reclaim Your Attention • Master Your Feed
+<div align="center">
+  <h1>
+    <font face="Space Grotesk, Haffer XH, Plus Jakarta Sans, Inter, sans-serif" size="7">
+      <span style="font-family: 'Space Grotesk', 'Plus Jakarta Sans', sans-serif; font-size: 2.8rem; font-weight: 800; letter-spacing: 0.2em;">
+        <b>🐲 KONTRE</b>
+      </span>
+    </font>
+  </h1>
+  <p>
+    <strong>Reclaim Your Attention • Master Your Feed</strong>
+  </p>
+</div>
 
 <p align="center">
   <strong>A next-generation, on-device digital wellbeing guardian built with Kotlin & Jetpack Compose.</strong><br>
