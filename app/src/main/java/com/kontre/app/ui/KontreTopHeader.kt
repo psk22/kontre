@@ -20,13 +20,16 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -157,10 +160,15 @@ fun StitchNavigationDrawer(
             .fillMaxWidth(0.82f)
             .background(Color(0xFF101014))
             .border(1.dp, Color(0x2207D98C), RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp))
-            .padding(24.dp),
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(horizontal = 24.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            // Bring everything down comfortably from the top
+            Spacer(modifier = Modifier.height(20.dp))
+
             // Drawer Top Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -259,9 +267,11 @@ fun StitchNavigationDrawer(
             }
         }
 
-        // Bottom Version Spec
+        // Bottom Version Spec (brought up nicely from the bottom)
         Column(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 36.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
