@@ -113,17 +113,17 @@ private fun CreditsHeroBanner() {
     ) {
         Box(
             modifier = Modifier
-                .size(56.dp)
+                .size(70.dp)
                 .clip(CircleShape)
                 .background(Color(0x2207D98C))
-                .border(1.dp, StitchEmerald, CircleShape),
+                .border(1.5.dp, StitchEmerald, CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 painter = painterResource(id = R.drawable.ic_kontre_dragon_vector),
                 contentDescription = "Kontre Dragon",
                 tint = StitchEmerald,
-                modifier = Modifier.size(32.dp)
+                modifier = Modifier.size(50.dp)
             )
         }
 

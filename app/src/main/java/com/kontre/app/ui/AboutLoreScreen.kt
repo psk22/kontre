@@ -221,7 +221,7 @@ private fun HeroDragonSection() {
         // Glowing Dragon Aura
         Box(
             modifier = Modifier
-                .size(110.dp)
+                .size(150.dp)
                 .clip(CircleShape)
                 .background(
                     Brush.radialGradient(
@@ -232,23 +232,23 @@ private fun HeroDragonSection() {
                         )
                     )
                 )
-                .border(1.dp, Color(0x2207D98C), CircleShape),
+                .border(1.5.dp, Color(0x3307D98C), CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 painter = painterResource(id = R.drawable.ic_kontre_dragon_vector),
                 contentDescription = "Kontre Dragon Hero",
                 tint = StitchEmerald,
-                modifier = Modifier.size(54.dp)
+                modifier = Modifier.size(88.dp)
             )
         }
 
         // Wordmark
         Text(
             text = "KONTRE",
-            fontSize = 30.sp,
+            fontSize = 34.sp,
             fontWeight = FontWeight.Black,
-            letterSpacing = 6.sp,
+            letterSpacing = 7.sp,
             color = Color.White
         )
 

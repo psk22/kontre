@@ -76,18 +76,18 @@ fun KontreTopHeader(
             // Logo + Brand Wordmark (Clean unboxed vector logo)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_kontre_dragon_vector),
                     contentDescription = "Kontre Dragon Logo",
                     tint = StitchEmerald,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(40.dp)
                 )
 
                 Text(
                     text = "KONTRE",
-                    fontSize = 22.sp,
+                    fontSize = 25.sp,
                     fontWeight = FontWeight.Black,
                     letterSpacing = 3.sp,
                     color = StitchEmerald
@@ -173,19 +173,19 @@ fun StitchNavigationDrawer(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_kontre_dragon_vector),
                     contentDescription = "Kontre Dragon Logo",
                     tint = StitchEmerald,
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(38.dp)
                 )
                 Text(
                     text = "KONTRE",
-                    fontSize = 18.sp,
+                    fontSize = 24.sp,
                     fontWeight = FontWeight.Black,
-                    letterSpacing = 2.sp,
+                    letterSpacing = 2.5.sp,
                     color = StitchEmerald
                 )
             }
@@ -333,7 +333,7 @@ fun StitchPrivacyDialog(onDismiss: () -> Unit) {
                         painter = painterResource(id = R.drawable.ic_kontre_dragon_vector),
                         contentDescription = "Privacy Shield",
                         tint = StitchEmerald,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(32.dp)
                     )
                     Text(
                         text = "PRIVACY POLICY",
@@ -714,7 +714,7 @@ fun StitchCreditsDialog(onDismiss: () -> Unit) {
                     painter = painterResource(id = R.drawable.ic_kontre_dragon_vector),
                     contentDescription = "Kontre Logo",
                     tint = StitchEmerald,
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier.size(32.dp)
                 )
                 Column {
                     Text(

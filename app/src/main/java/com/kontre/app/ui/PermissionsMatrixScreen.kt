@@ -234,13 +234,13 @@ private fun DiagnosticsHeroBanner(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(10.dp)
-                        .clip(CircleShape)
-                        .background(accentColor)
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_kontre_dragon_vector),
+                    contentDescription = "Kontre Sentinel Status",
+                    tint = accentColor,
+                    modifier = Modifier.size(28.dp)
                 )
                 Text(
                     text = if (isFullyOperational) "STATUS // FULL PROTECTION" else "STATUS // DEGRADED",

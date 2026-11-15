@@ -159,7 +159,7 @@ fun SplashScreen(
             // Dragon Mascot Vector Logo with Breathing Animation
             Box(
                 modifier = Modifier
-                    .size(190.dp)
+                    .size(230.dp)
                     .scale(logoScale),
                 contentAlignment = Alignment.Center
             ) {
@@ -168,7 +168,7 @@ fun SplashScreen(
                     painter = painterResource(id = R.drawable.ic_kontre_dragon_vector),
                     contentDescription = null,
                     modifier = Modifier
-                        .size(196.dp)
+                        .size(238.dp)
                         .alpha(0.35f * auraIntensity)
                 )
                 // Crisp sharp emerald vector strokes

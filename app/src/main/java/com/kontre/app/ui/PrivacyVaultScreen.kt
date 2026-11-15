@@ -112,17 +112,17 @@ private fun PrivacyHeroSection() {
         // Vault Status Banner
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(StitchEmerald)
+            Icon(
+                painter = painterResource(id = R.drawable.ic_kontre_dragon_vector),
+                contentDescription = "Kontre Dragon Logo",
+                tint = StitchEmerald,
+                modifier = Modifier.size(28.dp)
             )
             Text(
                 text = "AIR-GAPPED SYSTEM PROTOCOL",
-                fontSize = 10.5.sp,
+                fontSize = 11.sp,
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Black,
                 letterSpacing = 1.5.sp,
@@ -253,13 +253,13 @@ private fun AccessibilityVaultDisclosureSection() {
         // Header
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Icon(
                 painter = painterResource(id = R.drawable.ic_kontre_dragon_vector),
                 contentDescription = "Shield Guard",
                 tint = StitchEmerald,
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier.size(34.dp)
             )
             Column {
                 Text(

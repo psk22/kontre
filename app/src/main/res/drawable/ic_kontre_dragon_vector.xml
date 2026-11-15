@@ -3,6 +3,11 @@
     android:height="200dp"
     android:viewportWidth="500"
     android:viewportHeight="500">
+    <group
+        android:pivotX="250"
+        android:pivotY="250"
+        android:scaleX="1.6"
+        android:scaleY="1.6">
     <!-- Horns / Outer Antlers -->
     <path
         android:pathData="M165,155 C150,170 155,240 185,275"
@@ -101,4 +106,5 @@
         android:strokeWidth="16"
         android:strokeLineCap="round"
         android:strokeLineJoin="round" />
+    </group>
 </vector>
