@@ -28,6 +28,7 @@ app/build/
 !docs/screenshots/*.jpg
 !docs/screenshots/*.png
 !docs/*.svg
+!docs/*.png
 
 
 .kotlin/

@@ -1,4 +1,5 @@
 <p align="center">
+  <img src="docs/kontre_dragon.png" width="130" alt="Kontre Dragon Emblem" /><br>
   <img src="docs/kontre_header.svg" width="380" alt="KONTRE" />
 </p>
 
