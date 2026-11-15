@@ -217,10 +217,20 @@ fun StitchNavigationDrawer(
             }
 
             // Navigation Options
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 DrawerNavigationItem(
-                    label = "ABOUT & LORE",
-                    onClick = { onSelectOption(TogglesDialogType.ABOUT_LORE) }
+                    label = "ABOUT",
+                    onClick = { onSelectOption(TogglesDialogType.ABOUT) }
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(Color(0x14FFFFFF))
+                )
+                DrawerNavigationItem(
+                    label = "CREDITS",
+                    onClick = { onSelectOption(TogglesDialogType.CREDITS) }
                 )
                 Box(
                     modifier = Modifier
@@ -941,7 +951,8 @@ private fun OpenSourceLibItem(
 }
 
 enum class TogglesDialogType {
-    ABOUT_LORE,
+    ABOUT,
+    CREDITS,
     PERMISSIONS,
     PRIVACY_VAULT
 }

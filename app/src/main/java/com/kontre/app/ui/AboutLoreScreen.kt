@@ -69,7 +69,7 @@ fun AboutLoreScreen(
     ) {
         // Top Navigation Bar
         SubPageTopBar(
-            title = "LORE & ARCHITECTURE",
+            title = "ABOUT KONTRE",
             subtitle = "THE SENTINEL OF FOCUS",
             onBack = onBack
         )

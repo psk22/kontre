@@ -100,6 +100,7 @@ import com.kontre.app.ui.theme.WhisperBorder
 import com.kontre.app.ui.KontreTopHeader
 import com.kontre.app.ui.StitchNavigationDrawer
 import com.kontre.app.ui.AboutLoreScreen
+import com.kontre.app.ui.CreditsScreen
 import com.kontre.app.ui.PermissionsMatrixScreen
 import com.kontre.app.ui.PrivacyVaultScreen
 import com.kontre.app.ui.TogglesDialogType
@@ -341,8 +342,11 @@ fun MainScreenContainer(
             ) + fadeOut(animationSpec = tween(240))
         ) {
             when (activeDialog) {
-                TogglesDialogType.ABOUT_LORE -> {
+                TogglesDialogType.ABOUT -> {
                     AboutLoreScreen(onBack = { activeDialog = null })
+                }
+                TogglesDialogType.CREDITS -> {
+                    CreditsScreen(onBack = { activeDialog = null })
                 }
                 TogglesDialogType.PERMISSIONS -> {
                     PermissionsMatrixScreen(onBack = { activeDialog = null })
