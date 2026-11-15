@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 5246 900" width="100%" height="auto">
+  <defs>
+    <filter id="neon-glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0" stdDeviation="30" flood-color="#00FF9D" flood-opacity="0.5" />
+    </filter>
+  </defs>
+  <g fill="#07D98C" filter="url(#neon-glow)">
+    <g transform="translate(200, 700) scale(1, -1)">
+      <path d="M66 0V700H198V422H216L443 700H612L320 355L622 0H448L216 284H198V0Z" />
+    </g>
+    <g transform="translate(1046, 700) scale(1, -1)">
+      <path d="M338 -14Q206 -14 128.0 58.5Q50 131 50 266V434Q50 569 128.0 641.5Q206 714 338 714Q470 714 548.0 641.5Q626 569 626 434V266Q626 131 548.0 58.5Q470 -14 338 -14ZM338 104Q412 104 453.0 147.0Q494 190 494 262V438Q494 510 453.0 553.0Q412 596 338 596Q265 596 223.5 553.0Q182 510 182 438V262Q182 190 223.5 147.0Q265 104 338 104Z" />
+    </g>
+    <g transform="translate(1942, 700) scale(1, -1)">
+      <path d="M66 0V700H317L456 90H474V700H604V0H353L214 610H196V0Z" />
+    </g>
+    <g transform="translate(2832, 700) scale(1, -1)">
+      <path d="M228 0V580H24V700H564V580H360V0Z" />
+    </g>
+    <g transform="translate(3640, 700) scale(1, -1)">
+      <path d="M66 0V700H370Q436 700 485.0 677.0Q534 654 561.0 612.0Q588 570 588 513V501Q588 438 558.0 399.0Q528 360 484 342V324Q524 322 546.0 296.5Q568 271 568 229V0H436V210Q436 234 423.5 249.0Q411 264 382 264H198V0ZM198 384H356Q403 384 429.5 409.5Q456 435 456 477V487Q456 529 430.0 554.5Q404 580 356 580H198Z" />
+    </g>
+    <g transform="translate(4492, 700) scale(1, -1)">
+      <path d="M66 0V700H516V580H198V413H488V293H198V120H522V0Z" />
+    </g>
+  </g>
+</svg>

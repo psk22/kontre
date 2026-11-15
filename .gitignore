@@ -27,6 +27,7 @@ app/build/
 # Documentation and README screenshots
 !docs/screenshots/*.jpg
 !docs/screenshots/*.png
+!docs/*.svg
 
 
 .kotlin/

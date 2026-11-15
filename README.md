@@ -1,10 +1,6 @@
-<h1 align="center">
-  <font color="#07D98C" face="Space Grotesk, Plus Jakarta Sans, sans-serif" size="7">
-    <span style="color: #07D98C; font-family: 'Space Grotesk', 'Plus Jakarta Sans', sans-serif; font-size: 3.5rem; font-weight: 800; letter-spacing: 0.25em;">
-      <b>KONTRE</b>
-    </span>
-  </font>
-</h1>
+<p align="center">
+  <img src="docs/kontre_header.svg" width="380" alt="KONTRE" />
+</p>
 
 <p align="center">
   <strong>A next-generation, on-device digital wellbeing guardian built with Kotlin & Jetpack Compose.</strong><br>
