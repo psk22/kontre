@@ -173,9 +173,9 @@ class FloatingCounterManager(private val service: AccessibilityService) {
         return container
     }
 
-    fun showOrUpdate(count: Int, limit: Int = 50) {
-        // Enforce toggle and limit: if disabled or daily limit is reached, hide immediately and do not show
-        if (!quotaManager.isFloatingCounterEnabled || quotaManager.isLimitReached || (limit > 0 && count >= limit)) {
+    fun showOrUpdate(count: Int, limit: Int = 50, enforceLimitHide: Boolean = false) {
+        // Enforce toggle and limit: if disabled, or if enforceLimitHide is true and daily limit is reached, hide immediately
+        if (!quotaManager.isFloatingCounterEnabled || (enforceLimitHide && (quotaManager.isLimitReached || (limit > 0 && count >= limit)))) {
             hide()
             return
         }
@@ -184,7 +184,7 @@ class FloatingCounterManager(private val service: AccessibilityService) {
         currentLimit = limit
         mainHandler.post {
             try {
-                if (!quotaManager.isFloatingCounterEnabled || quotaManager.isLimitReached || (limit > 0 && currentCount >= limit)) {
+                if (!quotaManager.isFloatingCounterEnabled || (enforceLimitHide && (quotaManager.isLimitReached || (limit > 0 && currentCount >= limit)))) {
                     hide()
                     return@post
                 }

@@ -40,9 +40,20 @@ open class ContentTrackerService : AccessibilityService() {
             onCountUpdated = { newCount, platform ->
                 Log.i(TAG, "ReelSessionTracker count updated: $newCount on $platform")
                 mainHandler.post {
-                    if (quotaManager.isFloatingCounterEnabled && !quotaManager.isLimitReached && (quotaManager.dailyLimit == 0 || newCount < quotaManager.dailyLimit)) {
-                        floatingCounterManager.showOrUpdate(newCount, quotaManager.dailyLimit)
-                        startLivenessWatchdog()
+                    val isPlatformBlockActive = if (platform.contains("YouTube", ignoreCase = true)) {
+                        quotaManager.isYouTubeBlockEnabled
+                    } else {
+                        quotaManager.isInstagramBlockEnabled
+                    }
+
+                    if (quotaManager.isFloatingCounterEnabled) {
+                        if (isPlatformBlockActive && quotaManager.isLimitReached) {
+                            floatingCounterManager.hide()
+                        } else {
+                            val displayLimit = if (quotaManager.dailyLimit > 0) quotaManager.dailyLimit else quotaManager.targetDailyLimit
+                            floatingCounterManager.showOrUpdate(newCount, displayLimit, enforceLimitHide = isPlatformBlockActive)
+                            startLivenessWatchdog()
+                        }
                     } else {
                         floatingCounterManager.hide()
                     }
@@ -50,8 +61,15 @@ open class ContentTrackerService : AccessibilityService() {
             },
             onLimitReachedWarning = { platform ->
                 Log.w(TAG, "ReelSessionTracker limit reached warning on $platform")
-                mainHandler.post {
-                    floatingCounterManager.hide()
+                val isPlatformBlockActive = if (platform.contains("YouTube", ignoreCase = true)) {
+                    quotaManager.isYouTubeBlockEnabled
+                } else {
+                    quotaManager.isInstagramBlockEnabled
+                }
+                if (isPlatformBlockActive) {
+                    mainHandler.post {
+                        floatingCounterManager.hide()
+                    }
                 }
             },
             onEjectionRequired = { platform ->
@@ -272,7 +290,7 @@ open class ContentTrackerService : AccessibilityService() {
         }
 
         // Show/refresh floating overlay on vertical feed (only if enabled and under limit)
-        updateFloatingOverlayState()
+        updateFloatingOverlayState("YouTube Shorts")
 
         val videoFingerprint = analysis.getVideoKey().ifEmpty {
             ReelFingerprintExtractor.extractReelFingerprint(rootNode) ?: ""
@@ -306,7 +324,7 @@ open class ContentTrackerService : AccessibilityService() {
         }
 
         // Show/refresh floating overlay on vertical feed (only if enabled and under limit)
-        updateFloatingOverlayState()
+        updateFloatingOverlayState("Instagram Reels")
 
         val videoFingerprint = analysis.getVideoKey().ifEmpty {
             ReelFingerprintExtractor.extractReelFingerprint(rootNode) ?: ""
@@ -317,12 +335,22 @@ open class ContentTrackerService : AccessibilityService() {
         }
     }
 
-    private fun updateFloatingOverlayState() {
-        if (quotaManager.isFloatingCounterEnabled && !quotaManager.isLimitReached) {
-            val currentCount = quotaManager.totalCount
-            val limit = quotaManager.dailyLimit
-            floatingCounterManager.showOrUpdate(currentCount, limit)
-            startLivenessWatchdog()
+    private fun updateFloatingOverlayState(platform: String = "YouTube Shorts") {
+        val isPlatformBlockActive = if (platform.contains("YouTube", ignoreCase = true)) {
+            quotaManager.isYouTubeBlockEnabled
+        } else {
+            quotaManager.isInstagramBlockEnabled
+        }
+
+        if (quotaManager.isFloatingCounterEnabled) {
+            if (isPlatformBlockActive && quotaManager.isLimitReached) {
+                hideFloatingOverlay()
+            } else {
+                val currentCount = quotaManager.totalCount
+                val displayLimit = if (quotaManager.dailyLimit > 0) quotaManager.dailyLimit else quotaManager.targetDailyLimit
+                floatingCounterManager.showOrUpdate(currentCount, displayLimit, enforceLimitHide = isPlatformBlockActive)
+                startLivenessWatchdog()
+            }
         } else {
             hideFloatingOverlay()
         }
@@ -416,8 +444,9 @@ open class ContentTrackerService : AccessibilityService() {
                 }
             }
 
-            // Ensure floating counter is hidden if limit is reached or disabled
-            if (quotaManager.isLimitReached || !quotaManager.isFloatingCounterEnabled) {
+            // Ensure floating counter is hidden if counter disabled, or if limit hit on a platform where blocking is active
+            val isCurrentPlatformBlockActive = if (pkg == PACKAGE_YOUTUBE) quotaManager.isYouTubeBlockEnabled else quotaManager.isInstagramBlockEnabled
+            if (!quotaManager.isFloatingCounterEnabled || (isCurrentPlatformBlockActive && quotaManager.isLimitReached)) {
                 floatingCounterManager.hide()
             }
 

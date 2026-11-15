@@ -186,7 +186,7 @@ fun SubPageTopBar(
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text(
-                    text = "v1.8.5",
+                    text = "v1.8.6",
                     fontSize = 10.sp,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
