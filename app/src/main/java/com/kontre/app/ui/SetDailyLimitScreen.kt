@@ -132,6 +132,26 @@ fun SetDailyLimitScreen(
         }
     }
 
+    val scaleTextPaint = remember(density) {
+        Paint().apply {
+            color = android.graphics.Color.parseColor("#71717A")
+            textSize = with(density) { 11.sp.toPx() }
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+            isAntiAlias = true
+        }
+    }
+
+    val scaleActiveTextPaint = remember(density) {
+        Paint().apply {
+            color = android.graphics.Color.parseColor("#07D98C")
+            textSize = with(density) { 11.sp.toPx() }
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+            isAntiAlias = true
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -286,11 +306,11 @@ fun SetDailyLimitScreen(
                 )
             }
 
-            // 5. Custom Neon Glow Slider with Floating Live Tooltip
+            // 5. Custom Neon Glow Slider with Floating Live Tooltip & Mathematically Aligned Scale
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(72.dp),
+                    .height(96.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Canvas(
@@ -349,7 +369,7 @@ fun SetDailyLimitScreen(
                     val fraction = (sliderValue / 100f).coerceIn(0f, 1f)
                     val thumbX = paddingPx + fraction * availableTrackWidth
 
-                    val trackCenterY = 54.dp.toPx()
+                    val trackCenterY = 48.dp.toPx()
                     val trackHeight = 7.dp.toPx()
                     val trackLeft = paddingPx
                     val trackRight = width - paddingPx
@@ -362,6 +382,16 @@ fun SetDailyLimitScreen(
                         strokeWidth = trackHeight,
                         cap = StrokeCap.Round
                     )
+
+                    // Tick Notch Dots along the Track
+                    listOf(0, 25, 50, 75, 100).forEach { notch ->
+                        val notchX = paddingPx + (notch / 100f) * availableTrackWidth
+                        drawCircle(
+                            color = Color(0x35FFFFFF),
+                            radius = 1.6.dp.toPx(),
+                            center = Offset(notchX, trackCenterY)
+                        )
+                    }
 
                     // Active Neon Track
                     if (thumbX > trackLeft) {
@@ -419,7 +449,7 @@ fun SetDailyLimitScreen(
                     // Floating Live Tooltip Bubble
                     val tooltipHalfWidth = 34.dp.toPx()
                     val tooltipHeight = 22.dp.toPx()
-                    val tooltipCenterY = 16.dp.toPx()
+                    val tooltipCenterY = 15.dp.toPx()
                     val tooltipCenterX = thumbX.coerceIn(tooltipHalfWidth, width - tooltipHalfWidth)
 
                     val tooltipRect = RectF(
@@ -467,24 +497,24 @@ fun SetDailyLimitScreen(
                         tooltipCenterY + 4.dp.toPx(),
                         tooltipTextPaint
                     )
+
+                    // Scale Numbers (0, 25, 50, 75, 100) exactly aligned with thumb center
+                    val scaleY = 82.dp.toPx()
+                    listOf(0, 25, 50, 75, 100).forEach { tickVal ->
+                        val tickFraction = tickVal / 100f
+                        val tickX = paddingPx + tickFraction * availableTrackWidth
+                        val isSelected = sliderValue.roundToInt() == tickVal
+                        drawContext.canvas.nativeCanvas.drawText(
+                            tickVal.toString(),
+                            tickX,
+                            scaleY,
+                            if (isSelected) scaleActiveTextPaint else scaleTextPaint
+                        )
+                    }
                 }
             }
 
-            // 6. Scale Min/Mid/Max Row
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(text = "0", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = StitchTextMuted)
-                Text(text = "25", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = StitchTextMuted)
-                Text(text = "50", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = StitchTextMuted)
-                Text(text = "75", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = StitchTextMuted)
-                Text(text = "100", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = StitchTextMuted)
-            }
-
-            // 7. Resets in countdown (Clean, Unboxed)
+            // 6. Resets in countdown (Clean, Unboxed)
             Text(
                 text = "Resets in: $countdownText",
                 fontSize = 12.sp,
