@@ -25,10 +25,10 @@ Kontre pairs surgical short-form blocking with a high-end, cyberpunk emerald des
 
 ### Core Interface
 
-| ⚡ Splash / Awakening | 🎛️ Platform Toggles | 🎯 Limits & Target Ceiling |
+| 🐲 Dragon Emblem | 🎛️ Platform Toggles | 🎯 Limits & Target Ceiling |
 | :---: | :---: | :---: |
-| <img src="docs/screenshots/1.jpg" width="260" alt="Kontre Splash Screen" /> | <img src="docs/screenshots/2.jpg" width="260" alt="Platform Toggles Screen" /> | <img src="docs/screenshots/3.jpg" width="260" alt="Set Daily Limit Screen" /> |
-| *Breathing Dragon Mascot & Fast Initialization* | *Surgical Switches for Shorts, Reels & HUD* | *Radial Consumption Dial & Locked Floor Slider* |
+| <img src="docs/screenshots/1.jpg" width="260" alt="Kontre Dragon Emblem" /> | <img src="docs/screenshots/2.jpg" width="260" alt="Platform Toggles Screen" /> | <img src="docs/screenshots/3.jpg" width="260" alt="Set Daily Limit Screen" /> |
+| *Official Emerald Dragon Emblem* | *Surgical Switches for Shorts, Reels & HUD* | *Radial Consumption Dial & Locked Floor Slider* |
 
 ---
 
